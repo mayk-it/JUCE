@@ -1038,7 +1038,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
             AudioUnitSetProperty (audioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &format, sizeof (format));
         }
 
-        AudioUnitInitialize (audioUnit);
+        enableAGC (audioUnit);
 
         {
             // Querying the kAudioUnitProperty_MaximumFramesPerSlice property after calling AudioUnitInitialize
@@ -1058,6 +1058,90 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         AudioUnitAddPropertyListener (audioUnit, kAudioUnitProperty_StreamFormat, dispatchAudioUnitPropertyChange, this);
 
         return true;
+    }
+
+    // Calls to AudioUnitInitialize() can fail if called back-to-back on different
+    // ADM instances. A fall-back solution is to allow multiple sequential calls
+    // with as small delay between each. This factor sets the max number of allowed
+    // initialization attempts.
+    static const int kMaxNumberOfAudioUnitInitializeAttempts = 5;
+    // A VP I/O unit's bus 1 connects to input hardware (microphone).
+    static const AudioUnitElement kInputBus = 1;
+
+    // Returns the automatic gain control (AGC) state on the processed microphone
+    // signal. Should be on by default for Voice Processing audio units.
+    static OSStatus GetAGCState(AudioUnit audio_unit, UInt32* enabled) {
+      UInt32 size = sizeof(*enabled);
+      OSStatus result = AudioUnitGetProperty(audio_unit,
+                                             kAUVoiceIOProperty_VoiceProcessingEnableAGC,
+                                             kAudioUnitScope_Global,
+                                             kInputBus,
+                                             enabled,
+                                             &size);
+      JUCE_IOS_AUDIO_LOG("VPIO unit AGC" << static_cast<unsigned int>(*enabled));
+      return result;
+    }
+    bool enableAGC(AudioUnit& vpio_unit_) {
+      // Initialize the Voice Processing I/O unit instance.
+      // Calls to AudioUnitInitialize() can fail if called back-to-back on
+      // different ADM instances. The error message in this case is -66635 which is
+      // undocumented. Tests have shown that calling AudioUnitInitialize a second
+      // time, after a short sleep, avoids this issue.
+      // See webrtc:5166 for details.
+      int failed_initalize_attempts = 0;
+      int result = AudioUnitInitialize(vpio_unit_);
+      while (result != noErr) {
+        JUCE_IOS_AUDIO_LOG("Failed to initialize the Voice Processing I/O unit. "
+             "Error=%ld." <<
+            (long)result);
+        ++failed_initalize_attempts;
+        if (failed_initalize_attempts == kMaxNumberOfAudioUnitInitializeAttempts) {
+          // Max number of initialization attempts exceeded, hence abort.
+            JUCE_IOS_AUDIO_LOG("Too many initialization attempts.");
+          return false;
+        }
+          JUCE_IOS_AUDIO_LOG("Pause 100ms and try audio unit initialization again...");
+        juce::Thread::sleep(100);
+        result = AudioUnitInitialize(vpio_unit_);
+      }
+      if (result == noErr) {
+        JUCE_IOS_AUDIO_LOG("Voice Processing I/O unit is now initialized.");
+      }
+      // AGC should be enabled by default for Voice Processing I/O units but it is
+      // checked below and enabled explicitly if needed. This scheme is used
+      // to be absolutely sure that the AGC is enabled since we have seen cases
+      // where only zeros are recorded and a disabled AGC could be one of the
+      // reasons why it happens.
+      int agc_was_enabled_by_default = 1;
+      UInt32 agc_is_enabled = 0;
+      result = GetAGCState(vpio_unit_, &agc_is_enabled);
+      if (result != noErr) {
+        JUCE_IOS_AUDIO_LOG("Failed to get AGC state (1st attempt). " <<
+             "Error=" <<
+            (long)result);
+      } else if (!agc_is_enabled) {
+        // Remember that the AGC was disabled by default. Will be used in UMA.
+        agc_was_enabled_by_default = 0;
+        // Try to enable the AGC.
+        UInt32 enable_agc = 1;
+        result =
+            AudioUnitSetProperty(vpio_unit_,
+                                 kAUVoiceIOProperty_VoiceProcessingEnableAGC,
+                                 kAudioUnitScope_Global, kInputBus, &enable_agc,
+                                 sizeof(enable_agc));
+        if (result != noErr) {
+          JUCE_IOS_AUDIO_LOG("Failed to enable the built-in AGC. " <<
+               "Error=" <<
+              (long)result);
+        }
+        result = GetAGCState(vpio_unit_, &agc_is_enabled);
+        if (result != noErr) {
+          JUCE_IOS_AUDIO_LOG("Failed to get AGC state (2nd attempt). " <<
+               "Error=" <<
+              (long)result);
+        }
+      }
+      return true;
     }
 
     void fillHostCallbackInfo (HostCallbackInfo& callbackInfo)
