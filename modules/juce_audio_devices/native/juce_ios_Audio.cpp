@@ -561,6 +561,18 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
 
         return session.mode == mode;
     }
+    
+    bool setAnalogInputGain (float gain)
+    {
+        auto session = [AVAudioSession sharedInstance];
+
+        if (session.isInputGainSettable) {
+            JUCE_NSERROR_CHECK ([session setInputGain: gain
+                                           error: &error]);
+        }
+
+        return session.inputGain == gain;
+    }
 
     //==============================================================================
     bool canControlTransport() override                    { return interAppAudioConnected; }
@@ -967,6 +979,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         desc.componentFlagsMask = 0;
                 
         setAudioPreprocessingEnabled(isUsingBuiltInSpeaker());
+        setAnalogInputGain(0.5f);
         
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
         AudioComponentInstanceNew (comp, &audioUnit);
