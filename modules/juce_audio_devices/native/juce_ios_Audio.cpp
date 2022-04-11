@@ -966,7 +966,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         desc.componentFlags = 0;
         desc.componentFlagsMask = 0;
                 
-        setAudioPreprocessingEnabled(isUsingBuiltInSpeaker());
+        setAudioPreprocessingEnabled(!isUsingWiredHeadphones());
         
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
         AudioComponentInstanceNew (comp, &audioUnit);
@@ -1114,6 +1114,24 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         }
       }
       return true;
+    }
+    
+    static bool isUsingWiredHeadphones()
+    {
+      auto session = [AVAudioSession sharedInstance];
+      auto route = session.currentRoute;
+
+      for (AVAudioSessionPortDescription* port in route.outputs)
+      {
+        String isWiredHeadphones;
+        isWiredHeadphones.fromUTF8(port.portType.UTF8String);
+          
+        if (isWiredHeadphones.equalsIgnoreCase("Headphones") || [port.portType isEqualToString: AVAudioSessionPortHeadphones])
+        {
+          return true;
+        }
+      }
+      return false;
     }
 
     void restart()
