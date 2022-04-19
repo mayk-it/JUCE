@@ -222,8 +222,8 @@ private:
             auto topLeft = itemComp.getRepresentedItem().getItemPosition (false).toFloat().getTopLeft();
 
             return { Desktop::getInstance().getMainMouseSource(), topLeft, mods,
-                     MouseInputSource::defaultPressure, MouseInputSource::defaultOrientation, MouseInputSource::defaultRotation,
-                     MouseInputSource::defaultTiltX, MouseInputSource::defaultTiltY,
+                     MouseInputSource::invalidPressure, MouseInputSource::invalidOrientation, MouseInputSource::invalidRotation,
+                     MouseInputSource::invalidTiltX, MouseInputSource::invalidTiltY,
                      &itemComp, &itemComp, Time::getCurrentTime(), topLeft, Time::getCurrentTime(), 0, false };
         }
 

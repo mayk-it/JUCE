@@ -323,7 +323,6 @@ private:
     class CustomisationDialog;
 
     std::unique_ptr<AccessibilityHandler> createAccessibilityHandler() override;
-    void initMissingItemButton();
     void showMissingItems();
     void addItemInternal (ToolbarItemFactory& factory, int itemId, int insertIndex);
 

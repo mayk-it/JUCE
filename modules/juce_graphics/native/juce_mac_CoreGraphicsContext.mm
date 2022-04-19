@@ -71,9 +71,7 @@ public:
 
     void initialiseBitmapData (Image::BitmapData& bitmap, int x, int y, Image::BitmapData::ReadWriteMode mode) override
     {
-        const auto offset = (size_t) (x * pixelStride + y * lineStride);
-        bitmap.data = imageData->data + offset;
-        bitmap.size = (size_t) (lineStride * height) - offset;
+        bitmap.data = imageData->data + x * pixelStride + y * lineStride;
         bitmap.pixelFormat = pixelFormat;
         bitmap.lineStride = lineStride;
         bitmap.pixelStride = pixelStride;
@@ -113,29 +111,32 @@ public:
     static CGImageRef createImage (const Image& juceImage, CGColorSpaceRef colourSpace)
     {
         const Image::BitmapData srcData (juceImage, Image::BitmapData::readOnly);
+        detail::DataProviderPtr provider;
 
-        const auto provider = [&]
+        if (auto* cgim = dynamic_cast<CoreGraphicsPixelData*> (juceImage.getPixelData()))
         {
-            if (auto* cgim = dynamic_cast<CoreGraphicsPixelData*> (juceImage.getPixelData()))
-            {
-                return detail::DataProviderPtr { CGDataProviderCreateWithData (new ImageDataContainer::Ptr (cgim->imageData),
+            provider = detail::DataProviderPtr { CGDataProviderCreateWithData (new ImageDataContainer::Ptr (cgim->imageData),
                                                                                srcData.data,
-                                                                               srcData.size,
+                                                                               (size_t) srcData.lineStride * (size_t) srcData.height,
                                                                                [] (void * __nullable info, const void*, size_t) { delete (ImageDataContainer::Ptr*) info; }) };
-            }
+        }
+        else
+        {
+            CFUniquePtr<CFDataRef> data (CFDataCreate (nullptr,
+                                                       (const UInt8*) srcData.data,
+                                                       (CFIndex) ((size_t) srcData.lineStride * (size_t) srcData.height)));
+            provider = detail::DataProviderPtr { CGDataProviderCreateWithCFData (data.get()) };
+        }
 
-            const auto usableSize = jmin ((size_t) srcData.lineStride * (size_t) srcData.height, srcData.size);
-            CFUniquePtr<CFDataRef> data (CFDataCreate (nullptr, (const UInt8*) srcData.data, (CFIndex) usableSize));
-            return detail::DataProviderPtr { CGDataProviderCreateWithCFData (data.get()) };
-        }();
+        CGImageRef imageRef = CGImageCreate ((size_t) srcData.width,
+                                             (size_t) srcData.height,
+                                             8,
+                                             (size_t) srcData.pixelStride * 8,
+                                             (size_t) srcData.lineStride,
+                                             colourSpace, getCGImageFlags (juceImage.getFormat()), provider.get(),
+                                             nullptr, true, kCGRenderingIntentDefault);
 
-        return CGImageCreate ((size_t) srcData.width,
-                              (size_t) srcData.height,
-                              8,
-                              (size_t) srcData.pixelStride * 8,
-                              (size_t) srcData.lineStride,
-                              colourSpace, getCGImageFlags (juceImage.getFormat()), provider.get(),
-                              nullptr, true, kCGRenderingIntentDefault);
+        return imageRef;
     }
 
     //==============================================================================
@@ -511,7 +512,7 @@ void CoreGraphicsContext::drawImage (const Image& sourceImage, const AffineTrans
 
     auto colourSpace = sourceImage.getFormat() == Image::PixelFormat::SingleChannel ? greyColourSpace.get()
                                                                                     : rgbColourSpace.get();
-    detail::ImagePtr image { CoreGraphicsPixelData::getCachedImageRef (sourceImage, colourSpace) };
+    auto image = detail::ImagePtr { CoreGraphicsPixelData::getCachedImageRef (sourceImage, colourSpace) };
 
     ScopedCGContextState scopedState (context.get());
     CGContextSetAlpha (context.get(), state->fillType.getOpacity());

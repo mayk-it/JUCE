@@ -442,17 +442,15 @@ public:
 
     Component* refreshComponentForRow (int row, bool selected, Component* existing) override
     {
-        auto safePtr = rawToUniquePtr (existing);
-
         if (isPositiveAndBelow (row, voiceProducts.size()))
         {
-            if (safePtr == nullptr)
-                safePtr = std::make_unique<VoiceRow> (purchases);
+            if (existing == nullptr)
+                existing = new VoiceRow (purchases);
 
-            if (auto* voiceRow = dynamic_cast<VoiceRow*> (safePtr.get()))
+            if (auto* voiceRow = dynamic_cast<VoiceRow*> (existing))
                 voiceRow->update (row, selected);
 
-            return safePtr.release();
+            return existing;
         }
 
         return nullptr;
@@ -501,6 +499,7 @@ public:
         voiceListBox.setRowHeight (66);
         voiceListBox.selectRow (0);
         voiceListBox.updateContent();
+        voiceListBox.getViewport()->setScrollOnDragEnabled (true);
 
         addAndMakeVisible (phraseLabel);
         addAndMakeVisible (phraseListBox);

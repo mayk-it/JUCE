@@ -268,18 +268,7 @@ private:
             for (int i = 0; i < totalChans; ++i)
                 audioChannels[i] = c.audioBuffers[audioChannelsToUse.getUnchecked (i)];
 
-            auto numAudioChannels = [this]
-            {
-                if (const auto* proc = node->getProcessor())
-                    if (proc->getTotalNumInputChannels() == 0 && proc->getTotalNumOutputChannels() == 0)
-                        return 0;
-
-                return totalChans;
-            }();
-
-            AudioBuffer<FloatType> buffer (audioChannels, numAudioChannels, c.numSamples);
-
-            const ScopedLock lock (processor.getCallbackLock());
+            AudioBuffer<FloatType> buffer (audioChannels, totalChans, c.numSamples);
 
             if (processor.isSuspended())
                 buffer.clear();

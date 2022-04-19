@@ -160,22 +160,22 @@ struct ButtonBasedStatusItem   : public StatusItemContainer
                                    eventMods.withFlags (isLeft ? ModifierKeys::leftButtonModifier
                                                                : ModifierKeys::rightButtonModifier),
                                    pressure,
-                                   MouseInputSource::defaultOrientation, MouseInputSource::defaultRotation,
-                                   MouseInputSource::defaultTiltX, MouseInputSource::defaultTiltY,
+                                   MouseInputSource::invalidOrientation, MouseInputSource::invalidRotation,
+                                   MouseInputSource::invalidTiltX, MouseInputSource::invalidTiltY,
                                    &owner, &owner, now, {}, now, 1, false });
 
                 owner.mouseUp   ({ mouseSource, {},
                                    eventMods.withoutMouseButtons(),
                                    pressure,
-                                   MouseInputSource::defaultOrientation, MouseInputSource::defaultRotation,
-                                   MouseInputSource::defaultTiltX, MouseInputSource::defaultTiltY,
+                                   MouseInputSource::invalidOrientation, MouseInputSource::invalidRotation,
+                                   MouseInputSource::invalidTiltX, MouseInputSource::invalidTiltY,
                                    &owner, &owner, now, {}, now, 1, false });
             }
             else if (type == NSEventTypeMouseMoved)
             {
                 owner.mouseMove (MouseEvent (mouseSource, {}, eventMods, pressure,
-                                             MouseInputSource::defaultOrientation, MouseInputSource::defaultRotation,
-                                             MouseInputSource::defaultTiltX, MouseInputSource::defaultTiltY,
+                                             MouseInputSource::invalidOrientation, MouseInputSource::invalidRotation,
+                                             MouseInputSource::invalidTiltX, MouseInputSource::invalidTiltY,
                                              &owner, &owner, now, {}, now, 1, false));
             }
         }
@@ -289,20 +289,20 @@ struct ViewBasedStatusItem   : public StatusItemContainer
                 owner.mouseDown (MouseEvent (mouseSource, {},
                                              eventMods.withFlags (isLeft ? ModifierKeys::leftButtonModifier
                                                                          : ModifierKeys::rightButtonModifier),
-                                             pressure, MouseInputSource::defaultOrientation, MouseInputSource::defaultRotation,
-                                             MouseInputSource::defaultTiltX, MouseInputSource::defaultTiltY,
+                                             pressure, MouseInputSource::invalidOrientation, MouseInputSource::invalidRotation,
+                                             MouseInputSource::invalidTiltX, MouseInputSource::invalidTiltY,
                                              &owner, &owner, now, {}, now, 1, false));
 
                 owner.mouseUp (MouseEvent (mouseSource, {}, eventMods.withoutMouseButtons(), pressure,
-                                           MouseInputSource::defaultOrientation, MouseInputSource::defaultRotation,
-                                           MouseInputSource::defaultTiltX, MouseInputSource::defaultTiltY,
+                                           MouseInputSource::invalidOrientation, MouseInputSource::invalidRotation,
+                                           MouseInputSource::invalidTiltX, MouseInputSource::invalidTiltY,
                                            &owner, &owner, now, {}, now, 1, false));
             }
             else if (type == NSEventTypeMouseMoved)
             {
                 owner.mouseMove (MouseEvent (mouseSource, {}, eventMods, pressure,
-                                             MouseInputSource::defaultOrientation, MouseInputSource::defaultRotation,
-                                             MouseInputSource::defaultTiltX, MouseInputSource::defaultTiltY,
+                                             MouseInputSource::invalidOrientation, MouseInputSource::invalidRotation,
+                                             MouseInputSource::invalidTiltX, MouseInputSource::invalidTiltY,
                                              &owner, &owner, now, {}, now, 1, false));
             }
         }

@@ -35,7 +35,7 @@
 
   ID:                 juce_gui_basics
   vendor:             juce
-  version:            6.1.6
+  version:            6.1.5
   name:               JUCE GUI core classes
   description:        Basic user-interface components and related classes.
   website:            http://www.juce.com/juce
@@ -158,7 +158,6 @@ namespace juce
     class Displays;
     class AccessibilityHandler;
     class KeyboardFocusTraverser;
-    class PointerState;
 
     class FlexBox;
     class Grid;

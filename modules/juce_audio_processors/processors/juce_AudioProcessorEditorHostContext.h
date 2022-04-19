@@ -72,18 +72,7 @@ struct AudioProcessorEditorHostContext
     /** Returns an object which can be used to display a context menu for the
         parameter with the given index.
     */
-    virtual std::unique_ptr<HostProvidedContextMenu> getContextMenuForParameter (const AudioProcessorParameter *) const = 0;
-
-    /** The naming of this function is misleading. Use getContextMenuForParameter() instead.
-
-        Returns an object which can be used to display a context menu for the
-        parameter with the given index.
-    */
-    [[deprecated ("The naming of this function has been fixed, use getContextMenuForParameter instead")]]
-    virtual std::unique_ptr<HostProvidedContextMenu> getContextMenuForParameterIndex (const AudioProcessorParameter * p) const
-    {
-        return getContextMenuForParameter (p);
-    }
+    virtual std::unique_ptr<HostProvidedContextMenu> getContextMenuForParameterIndex (const AudioProcessorParameter *) const = 0;
 };
 
 } // namespace juce

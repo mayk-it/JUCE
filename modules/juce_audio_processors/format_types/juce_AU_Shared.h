@@ -157,10 +157,13 @@ struct AudioUnitHelpers
 
         AudioBuffer<float>& getBuffer (UInt32 frames) noexcept
         {
-            jassert (std::none_of (channels.begin(), channels.end(), [] (auto* x) { return x == nullptr; }));
+           #if JUCE_DEBUG
+            for (int i = 0; i < (int) channels.size(); ++i)
+                jassert (channels[(size_t) i] != nullptr);
+           #endif
 
-            const auto channelPtr = channels.empty() ? scratch.getArrayOfWritePointers() : channels.data();
-            mutableBuffer.setDataToReferTo (channelPtr, (int) channels.size(), static_cast<int> (frames));
+            if (! channels.empty())
+                mutableBuffer.setDataToReferTo (channels.data(), (int) channels.size(), static_cast<int> (frames));
 
             return mutableBuffer;
         }
@@ -212,31 +215,25 @@ struct AudioUnitHelpers
             }
         }
 
-        void clearInputBus (int index, int bufferLength)
+        void clearInputBus (int index)
         {
             if (isPositiveAndBelow (index, inputBusOffsets.size() - 1))
-                clearChannels ({ inputBusOffsets[(size_t) index], inputBusOffsets[(size_t) (index + 1)] }, bufferLength);
+                clearChannels (inputBusOffsets[(size_t) index], inputBusOffsets[(size_t) (index + 1)]);
         }
 
-        void clearUnusedChannels (int bufferLength)
+        void clearUnusedChannels()
         {
             jassert (! inputBusOffsets .empty());
             jassert (! outputBusOffsets.empty());
 
-            clearChannels ({ inputBusOffsets.back(), outputBusOffsets.back() }, bufferLength);
+            clearChannels (inputBusOffsets.back(), outputBusOffsets.back());
         }
 
     private:
-        void clearChannels (Range<int> range, int bufferLength)
+        void clearChannels (int begin, int end)
         {
-            jassert (bufferLength <= scratch.getNumSamples());
-
-            if (range.getEnd() <= (int) channels.size())
-            {
-                std::for_each (channels.begin() + range.getStart(),
-                               channels.begin() + range.getEnd(),
-                               [bufferLength] (float* ptr) { zeromem (ptr, sizeof (float) * (size_t) bufferLength); });
-            }
+            for (auto i = begin; i < end; ++i)
+                zeromem (scratch.getWritePointer (i), sizeof (float) * (size_t) scratch.getNumSamples());
         }
 
         float* uniqueBuffer (int idx, float* buffer) noexcept

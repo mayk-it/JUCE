@@ -135,9 +135,7 @@ namespace build_tools
 
         cpp << "/* ==================================== " << resourceFileIdentifierString << " ====================================";
         writeComment (cpp);
-        cpp << "#include <cstring>" << newLine
-            << newLine
-            << "namespace " << className << newLine
+        cpp << "namespace " << className << newLine
             << "{" << newLine;
 
         while (i < files.size())
@@ -223,8 +221,10 @@ namespace build_tools
                 << "const char* getNamedResourceOriginalFilename (const char* resourceNameUTF8)"                         << newLine
                 << "{"                                                                                                   << newLine
                 << "    for (unsigned int i = 0; i < (sizeof (namedResourceList) / sizeof (namedResourceList[0])); ++i)" << newLine
-                << "        if (strcmp (namedResourceList[i], resourceNameUTF8) == 0)"                                   << newLine
+                << "    {"                                                                                               << newLine
+                << "        if (namedResourceList[i] == resourceNameUTF8)"                                               << newLine
                 << "            return originalFilenames[i];"                                                            << newLine
+                << "    }"                                                                                               << newLine
                 <<                                                                                                          newLine
                 << "    return nullptr;"                                                                                 << newLine
                 << "}"                                                                                                   << newLine

@@ -136,7 +136,7 @@ public:
 private:
     //==============================================================================
     Point<float> lastMousePos;
-    SafePointer<Component> lastComponentUnderMouse;
+    Component* lastComponentUnderMouse = nullptr;
     String tipShowing, lastTipUnderMouse, manuallyShownTip;
     int millisecondsBeforeTipAppears;
     unsigned int lastCompChangeTime = 0, lastHideTime = 0;

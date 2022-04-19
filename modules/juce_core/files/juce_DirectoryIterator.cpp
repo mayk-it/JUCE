@@ -75,26 +75,13 @@ bool DirectoryIterator::next (bool* isDirResult, bool* isHiddenResult, int64* fi
 
             if (! filename.containsOnly ("."))
             {
-                const auto fullPath = File::createFileWithoutCheckingPath (path + filename);
                 bool matches = false;
 
                 if (isDirectory)
                 {
-                    const auto mayRecurseIntoPossibleHiddenDir = [this, &isHidden]
-                    {
-                        return (whatToLookFor & File::ignoreHiddenFiles) == 0 || ! isHidden;
-                    };
-
-                    const auto mayRecurseIntoPossibleSymlink = [this, &fullPath]
-                    {
-                        return followSymlinks == File::FollowSymlinks::yes
-                            || ! fullPath.isSymbolicLink()
-                            || (followSymlinks == File::FollowSymlinks::noCycles
-                                && knownPaths->find (fullPath.getLinkedTarget()) == knownPaths->end());
-                    };
-
-                    if (isRecursive && mayRecurseIntoPossibleHiddenDir() && mayRecurseIntoPossibleSymlink())
-                        subIterator.reset (new DirectoryIterator (fullPath, true, wildCard, whatToLookFor, followSymlinks, knownPaths));
+                    if (isRecursive && ((whatToLookFor & File::ignoreHiddenFiles) == 0 || ! isHidden))
+                        subIterator.reset (new DirectoryIterator (File::createFileWithoutCheckingPath (path + filename),
+                                                                  true, wildCard, whatToLookFor));
 
                     matches = (whatToLookFor & File::findDirectories) != 0;
                 }
@@ -112,7 +99,7 @@ bool DirectoryIterator::next (bool* isDirResult, bool* isHiddenResult, int64* fi
 
                 if (matches)
                 {
-                    currentFile = fullPath;
+                    currentFile = File::createFileWithoutCheckingPath (path + filename);
                     if (isHiddenResult != nullptr)     *isHiddenResult = isHidden;
                     if (isDirResult != nullptr)        *isDirResult = isDirectory;
 

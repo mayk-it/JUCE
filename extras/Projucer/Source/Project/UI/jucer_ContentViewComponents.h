@@ -302,7 +302,8 @@ public:
 
         for (auto& pp : properties)
         {
-            const auto propertyHeight = jmax (pp->getPreferredHeight(), getApproximateLabelHeight (*pp));
+            const auto propertyHeight = pp->getPreferredHeight()
+                                       + (getHeightMultiplier (pp.get()) * pp->getPreferredHeight());
 
             auto iter = std::find_if (propertyComponentsWithInfo.begin(), propertyComponentsWithInfo.end(),
                                       [&pp] (const std::unique_ptr<PropertyAndInfoWrapper>& w) { return &w->propertyComponent == pp.get(); });
@@ -417,17 +418,17 @@ private:
         }
     }
 
-    static int getApproximateLabelHeight (const PropertyComponent& pp)
+    int getHeightMultiplier (PropertyComponent* pp)
     {
         auto availableTextWidth = ProjucerLookAndFeel::getTextWidthForPropertyComponent (pp);
+
+        auto font = ProjucerLookAndFeel::getPropertyComponentFont();
+        auto nameWidth = font.getStringWidthFloat (pp->getName());
 
         if (availableTextWidth == 0)
             return 0;
 
-        const auto font = ProjucerLookAndFeel::getPropertyComponentFont();
-        const auto labelWidth = font.getStringWidthFloat (pp.getName());
-        const auto numLines = (int) (labelWidth / (float) availableTextWidth) + 1;
-        return (int) std::round ((float) numLines * font.getHeight() * 1.1f);
+        return static_cast<int> (nameWidth / (float) availableTextWidth);
     }
 
     //==============================================================================

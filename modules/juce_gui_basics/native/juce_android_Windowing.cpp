@@ -679,8 +679,8 @@ public:
         handleMouseEvent (MouseInputSource::InputSourceType::touch,
                           pos,
                           ModifierKeys::currentModifiers.withoutMouseButtons(),
-                          MouseInputSource::defaultPressure,
-                          MouseInputSource::defaultOrientation,
+                          MouseInputSource::invalidPressure,
+                          MouseInputSource::invalidOrientation,
                           time,
                           {},
                           index);
@@ -702,8 +702,8 @@ public:
         handleMouseEvent (MouseInputSource::InputSourceType::touch,
                           pos,
                           ModifierKeys::currentModifiers.withoutMouseButtons().withFlags (ModifierKeys::leftButtonModifier),
-                          MouseInputSource::defaultPressure,
-                          MouseInputSource::defaultOrientation,
+                          MouseInputSource::invalidPressure,
+                          MouseInputSource::invalidOrientation,
                           time,
                           {},
                           index);
@@ -723,8 +723,8 @@ public:
         handleMouseEvent (MouseInputSource::InputSourceType::touch,
                           pos,
                           ModifierKeys::currentModifiers.withoutMouseButtons(),
-                          MouseInputSource::defaultPressure,
-                          MouseInputSource::defaultOrientation,
+                          MouseInputSource::invalidPressure,
+                          MouseInputSource::invalidOrientation,
                           time,
                           {},
                           index);
@@ -1213,9 +1213,7 @@ private:
             bm.lineStride = width * static_cast<int> (sizeof (jint));
             bm.pixelStride = static_cast<int> (sizeof (jint));
             bm.pixelFormat = Image::ARGB;
-            const auto offset = (size_t) x + (size_t) y * (size_t) width;
-            bm.data = (uint8*) (data + offset);
-            bm.size = sizeof (jint) * (((size_t) height * (size_t) width) - offset);
+            bm.data = (uint8*) (data + x + y * width);
         }
 
         ImagePixelData::Ptr clone() override

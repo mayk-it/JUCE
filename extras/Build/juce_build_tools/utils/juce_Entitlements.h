@@ -49,14 +49,6 @@ namespace build_tools
         StringArray hardenedRuntimeOptions;
         StringArray appSandboxOptions;
 
-        struct KeyAndStringArray
-        {
-            String key;
-            StringArray values;
-        };
-
-        std::vector<KeyAndStringArray> appSandboxTemporaryPaths;
-
     private:
         StringPairArray getEntitlements() const;
     };

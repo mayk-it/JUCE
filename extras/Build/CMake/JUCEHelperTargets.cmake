@@ -1,26 +1,3 @@
-# ==============================================================================
-#
-#  This file is part of the JUCE library.
-#  Copyright (c) 2020 - Raw Material Software Limited
-#
-#  JUCE is an open source library subject to commercial or open-source
-#  licensing.
-#
-#  By using JUCE, you agree to the terms of both the JUCE 6 End-User License
-#  Agreement and JUCE Privacy Policy (both effective as of the 16th June 2020).
-#
-#  End User License Agreement: www.juce.com/juce-6-licence
-#  Privacy Policy: www.juce.com/juce-privacy-policy
-#
-#  Or: You may also use this code under the terms of the GPL v3 (see
-#  www.gnu.org/licenses).
-#
-#  JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
-#  EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
-#  DISCLAIMED.
-#
-# ==============================================================================
-
 add_library(juce_recommended_warning_flags INTERFACE)
 add_library(juce::juce_recommended_warning_flags ALIAS juce_recommended_warning_flags)
 
@@ -34,7 +11,7 @@ elseif((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_CXX_COMPILER_ID STREQU
         -Wsign-conversion -Wbool-conversion -Wextra-semi -Wunreachable-code
         -Wcast-align -Wshift-sign-overflow -Wno-missing-field-initializers
         -Wnullable-to-nonnull-conversion -Wno-ignored-qualifiers -Wswitch-enum
-        -Wpedantic -Wdeprecated
+        -Wpedantic
         $<$<OR:$<COMPILE_LANGUAGE:CXX>,$<COMPILE_LANGUAGE:OBJCXX>>:
             -Wzero-as-null-pointer-constant -Wunused-private-field
             -Woverloaded-virtual -Wreorder

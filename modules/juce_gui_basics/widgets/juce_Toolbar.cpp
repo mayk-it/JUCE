@@ -243,7 +243,10 @@ private:
 Toolbar::Toolbar()
 {
     lookAndFeelChanged();
-    initMissingItemButton();
+    addChildComponent (missingItemsButton.get());
+
+    missingItemsButton->setAlwaysOnTop (true);
+    missingItemsButton->onClick = [this] { showMissingItems(); };
 }
 
 Toolbar::~Toolbar()
@@ -531,16 +534,6 @@ void Toolbar::updateAllItemPositions (bool animate)
 }
 
 //==============================================================================
-void Toolbar::initMissingItemButton()
-{
-    if (missingItemsButton == nullptr)
-        return;
-
-    addChildComponent (*missingItemsButton);
-    missingItemsButton->setAlwaysOnTop (true);
-    missingItemsButton->onClick = [this] { showMissingItems(); };
-}
-
 void Toolbar::showMissingItems()
 {
     jassert (missingItemsButton->isShowing());
@@ -549,7 +542,7 @@ void Toolbar::showMissingItems()
     {
         PopupMenu m;
         auto comp = std::make_unique<MissingItemsComponent> (*this, getThickness());
-        m.addCustomItem (1, std::move (comp), nullptr, TRANS ("Additional Items"));
+        m.addCustomItem (1, std::move (comp));
         m.showMenuAsync (PopupMenu::Options().withTargetComponent (missingItemsButton.get()));
     }
 }
@@ -650,7 +643,6 @@ void Toolbar::itemDropped (const SourceDetails& dragSourceDetails)
 void Toolbar::lookAndFeelChanged()
 {
     missingItemsButton.reset (getLookAndFeel().createToolbarMissingItemsButton (*this));
-    initMissingItemButton();
 }
 
 void Toolbar::mouseDown (const MouseEvent&) {}

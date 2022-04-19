@@ -41,6 +41,7 @@ struct MPEZone
     enum class Type { lower, upper };
 
     MPEZone() = default;
+    MPEZone (const MPEZone& other) = default;
 
     MPEZone (Type type, int memberChannels = 0, int perNotePitchbend = 48, int masterPitchbend = 2)
         : zoneType (type),

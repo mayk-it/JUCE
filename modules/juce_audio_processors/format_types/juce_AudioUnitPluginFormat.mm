@@ -216,40 +216,13 @@ namespace AudioUnitFormatHelpers
                 if (manuString != nullptr && CFGetTypeID (manuString) == CFStringGetTypeID())
                     manufacturer = String::fromCFString ((CFStringRef) manuString);
 
-                class ScopedBundleResourceMap final
-                {
-                public:
-                    explicit ScopedBundleResourceMap (CFBundleRef refIn) : ref (refIn),
-                                                                           resFileId (CFBundleOpenBundleResourceMap (ref)),
-                                                                           valid (resFileId != -1)
-                    {
-                        if (valid)
-                            UseResFile (resFileId);
-                    }
-
-                    ~ScopedBundleResourceMap()
-                    {
-                        if (valid)
-                            CFBundleCloseBundleResourceMap (ref, resFileId);
-                    }
-
-                    bool isValid() const noexcept
-                    {
-                        return valid;
-                    }
-
-                private:
-                    const CFBundleRef ref;
-                    const ResFileRefNum resFileId;
-                    const bool valid;
-                };
-
-                const ScopedBundleResourceMap resourceMap { bundleRef.get() };
+                const ResFileRefNum resFileId = CFBundleOpenBundleResourceMap (bundleRef.get());
+                UseResFile (resFileId);
 
                 const OSType thngType = stringToOSType ("thng");
                 auto numResources = Count1Resources (thngType);
 
-                if (resourceMap.isValid() && numResources > 0)
+                if (numResources > 0)
                 {
                     for (ResourceIndex i = 1; i <= numResources; ++i)
                     {
@@ -295,6 +268,8 @@ namespace AudioUnitFormatHelpers
 
                     [bundle release];
                 }
+
+                CFBundleCloseBundleResourceMap (bundleRef.get(), resFileId);
             }
         }
 
@@ -848,7 +823,7 @@ public:
                 layoutHasChanged = true;
 
                 err = AudioUnitSetProperty (audioUnit, kAudioUnitProperty_ElementCount, scope, 0, &newCount, sizeof (newCount));
-                jassertquiet (err == noErr);
+                jassert (err == noErr);
             }
 
             for (int i = 0; i < n; ++i)
@@ -1126,9 +1101,8 @@ public:
             inMapping .setUpMapping (audioUnit, true);
             outMapping.setUpMapping (audioUnit, false);
 
-            preparedChannels = jmax (getTotalNumInputChannels(), getTotalNumOutputChannels());
-            preparedSamples  = estimatedSamplesPerBlock;
-            inputBuffer.setSize (preparedChannels, preparedSamples);
+            inputBuffer.setSize (jmax (getTotalNumInputChannels(), getTotalNumOutputChannels()),
+                                 estimatedSamplesPerBlock);
         }
     }
 
@@ -1156,8 +1130,8 @@ public:
     void processAudio (AudioBuffer<float>& buffer, MidiBuffer& midiMessages, bool processBlockBypassedCalled)
     {
         // If these are hit, we might allocate in the process block!
-        jassert (buffer.getNumChannels() <= preparedChannels);
-        jassert (buffer.getNumSamples()  <= preparedSamples);
+        jassert (buffer.getNumChannels() <= inputBuffer.getNumChannels());
+        jassert (buffer.getNumSamples()  <= inputBuffer.getNumSamples());
         // Copy the input buffer to guard against the case where a bus has more output channels
         // than input channels, so rendering the output for that bus might stamp over the input
         // to the following bus.
@@ -1750,7 +1724,7 @@ private:
     AudioBuffer<float> inputBuffer;
     Array<Array<AudioChannelSet>> supportedInLayouts, supportedOutLayouts;
 
-    int numChannelInfos, preparedChannels = 0, preparedSamples = 0;
+    int numChannelInfos;
     HeapBlock<AUChannelInfo> channelInfos;
 
     AudioUnit audioUnit;

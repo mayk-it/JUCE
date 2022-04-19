@@ -240,7 +240,6 @@ public:
     int getCurrentIRSize() const { return irSize; }
 
     using Parameter = AudioProcessorValueTreeState::Parameter;
-    using Attributes = AudioProcessorValueTreeStateParameterAttributes;
 
     // This struct holds references to the raw parameters, so that we don't have to search
     // the APVTS (involving string comparisons and map lookups!) every time a parameter
@@ -262,52 +261,45 @@ public:
         template <typename Param, typename Group, typename... Ts>
         static Param& addToLayout (Group& layout, Ts&&... ts)
         {
-            auto param = new Param (std::forward<Ts> (ts)...);
+            auto param = std::make_unique<Param> (std::forward<Ts> (ts)...);
             auto& ref = *param;
-            add (layout, rawToUniquePtr (param));
+            add (layout, std::move (param));
             return ref;
         }
 
-        static String valueToTextFunction (float x, int) { return String (x, 2); }
+        static String valueToTextFunction (float x) { return String (x, 2); }
         static float textToValueFunction (const String& str) { return str.getFloatValue(); }
 
-        static auto getBasicAttributes()
-        {
-            return Attributes().withStringFromValueFunction (valueToTextFunction)
-                               .withValueFromStringFunction (textToValueFunction);
-        }
-
-        static auto getDbAttributes()           { return getBasicAttributes().withLabel ("dB"); }
-        static auto getMsAttributes()           { return getBasicAttributes().withLabel ("ms"); }
-        static auto getHzAttributes()           { return getBasicAttributes().withLabel ("Hz"); }
-        static auto getPercentageAttributes()   { return getBasicAttributes().withLabel ("%"); }
-        static auto getRatioAttributes()        { return getBasicAttributes().withLabel (":1"); }
-
-        static String valueToTextPanFunction (float x, int) { return getPanningTextForValue ((x + 100.0f) / 200.0f); }
+        static String valueToTextPanFunction (float x) { return getPanningTextForValue ((x + 100.0f) / 200.0f); }
         static float textToValuePanFunction (const String& str) { return getPanningValueForText (str) * 200.0f - 100.0f; }
 
         struct MainGroup
         {
             explicit MainGroup (AudioProcessorParameterGroup& layout)
                 : inputGain (addToLayout<Parameter> (layout,
-                                                     ParameterID { ID::inputGain, 1 },
+                                                     ID::inputGain,
                                                      "Input",
+                                                     "dB",
                                                      NormalisableRange<float> (-40.0f, 40.0f),
                                                      0.0f,
-                                                     getDbAttributes())),
+                                                     valueToTextFunction,
+                                                     textToValueFunction)),
                   outputGain (addToLayout<Parameter> (layout,
-                                                      ParameterID { ID::outputGain, 1 },
+                                                      ID::outputGain,
                                                       "Output",
+                                                      "dB",
                                                       NormalisableRange<float> (-40.0f, 40.0f),
                                                       0.0f,
-                                                      getDbAttributes())),
+                                                      valueToTextFunction,
+                                                      textToValueFunction)),
                   pan (addToLayout<Parameter> (layout,
-                                               ParameterID { ID::pan, 1 },
+                                               ID::pan,
                                                "Panning",
+                                               "",
                                                NormalisableRange<float> (-100.0f, 100.0f),
                                                0.0f,
-                                               Attributes().withStringFromValueFunction (valueToTextPanFunction)
-                                                           .withValueFromStringFunction (textToValuePanFunction))) {}
+                                               valueToTextPanFunction,
+                                               textToValuePanFunction)) {}
 
             Parameter& inputGain;
             Parameter& outputGain;
@@ -318,46 +310,57 @@ public:
         {
             explicit DistortionGroup (AudioProcessorParameterGroup& layout)
                 : enabled (addToLayout<AudioParameterBool> (layout,
-                                                            ParameterID { ID::distortionEnabled, 1 },
+                                                            ID::distortionEnabled,
                                                             "Distortion",
-                                                            true)),
+                                                            true,
+                                                            "")),
                   type (addToLayout<AudioParameterChoice> (layout,
-                                                           ParameterID { ID::distortionType, 1 },
+                                                           ID::distortionType,
                                                            "Waveshaper",
                                                            StringArray { "std::tanh", "Approx. tanh" },
                                                            0)),
                   inGain (addToLayout<Parameter> (layout,
-                                                  ParameterID { ID::distortionInGain, 1 },
+                                                  ID::distortionInGain,
                                                   "Gain",
+                                                  "dB",
                                                   NormalisableRange<float> (-40.0f, 40.0f),
                                                   0.0f,
-                                                  getDbAttributes())),
+                                                  valueToTextFunction,
+                                                  textToValueFunction)),
                   lowpass (addToLayout<Parameter> (layout,
-                                                   ParameterID { ID::distortionLowpass, 1 },
+                                                   ID::distortionLowpass,
                                                    "Post Low-pass",
+                                                   "Hz",
                                                    NormalisableRange<float> (20.0f, 22000.0f, 0.0f, 0.25f),
                                                    22000.0f,
-                                                   getHzAttributes())),
+                                                   valueToTextFunction,
+                                                   textToValueFunction)),
                   highpass (addToLayout<Parameter> (layout,
-                                                    ParameterID { ID::distortionHighpass, 1 },
+                                                    ID::distortionHighpass,
                                                     "Pre High-pass",
+                                                    "Hz",
                                                     NormalisableRange<float> (20.0f, 22000.0f, 0.0f, 0.25f),
                                                     20.0f,
-                                                    getHzAttributes())),
+                                                    valueToTextFunction,
+                                                    textToValueFunction)),
                   compGain (addToLayout<Parameter> (layout,
-                                                    ParameterID { ID::distortionCompGain, 1 },
+                                                    ID::distortionCompGain,
                                                     "Compensat.",
+                                                    "dB",
                                                     NormalisableRange<float> (-40.0f, 40.0f),
                                                     0.0f,
-                                                    getDbAttributes())),
+                                                    valueToTextFunction,
+                                                    textToValueFunction)),
                   mix (addToLayout<Parameter> (layout,
-                                               ParameterID { ID::distortionMix, 1 },
+                                               ID::distortionMix,
                                                "Mix",
+                                               "%",
                                                NormalisableRange<float> (0.0f, 100.0f),
                                                100.0f,
-                                               getPercentageAttributes())),
+                                               valueToTextFunction,
+                                               textToValueFunction)),
                   oversampler (addToLayout<AudioParameterChoice> (layout,
-                                                                  ParameterID { ID::distortionOversampler, 1 },
+                                                                  ID::distortionOversampler,
                                                                   "Oversampling",
                                                                   StringArray { "2X",
                                                                                 "4X",
@@ -381,27 +384,34 @@ public:
         {
             explicit MultiBandGroup (AudioProcessorParameterGroup& layout)
                 : enabled (addToLayout<AudioParameterBool> (layout,
-                                                            ParameterID { ID::multiBandEnabled, 1 },
+                                                            ID::multiBandEnabled,
                                                             "Multi-band",
-                                                            false)),
+                                                            false,
+                                                            "")),
                   freq (addToLayout<Parameter> (layout,
-                                                ParameterID { ID::multiBandFreq, 1 },
+                                                ID::multiBandFreq,
                                                 "Sep. Freq.",
+                                                "Hz",
                                                 NormalisableRange<float> (20.0f, 22000.0f, 0.0f, 0.25f),
                                                 2000.0f,
-                                                getHzAttributes())),
+                                                valueToTextFunction,
+                                                textToValueFunction)),
                   lowVolume (addToLayout<Parameter> (layout,
-                                                     ParameterID { ID::multiBandLowVolume, 1 },
+                                                     ID::multiBandLowVolume,
                                                      "Low volume",
+                                                     "dB",
                                                      NormalisableRange<float> (-40.0f, 40.0f),
                                                      0.0f,
-                                                     getDbAttributes())),
+                                                     valueToTextFunction,
+                                                     textToValueFunction)),
                   highVolume (addToLayout<Parameter> (layout,
-                                                      ParameterID { ID::multiBandHighVolume, 1 },
+                                                      ID::multiBandHighVolume,
                                                       "High volume",
+                                                      "dB",
                                                       NormalisableRange<float> (-40.0f, 40.0f),
                                                       0.0f,
-                                                      getDbAttributes())) {}
+                                                      valueToTextFunction,
+                                                      textToValueFunction)) {}
 
             AudioParameterBool& enabled;
             Parameter& freq;
@@ -413,19 +423,23 @@ public:
         {
             explicit ConvolutionGroup (AudioProcessorParameterGroup& layout)
                 : cabEnabled (addToLayout<AudioParameterBool> (layout,
-                                                               ParameterID { ID::convolutionCabEnabled, 1 },
+                                                               ID::convolutionCabEnabled,
                                                                "Cabinet",
-                                                               false)),
+                                                               false,
+                                                               "")),
                   reverbEnabled (addToLayout<AudioParameterBool> (layout,
-                                                                  ParameterID { ID::convolutionReverbEnabled, 1 },
+                                                                  ID::convolutionReverbEnabled,
                                                                   "Reverb",
-                                                                  false)),
+                                                                  false,
+                                                                  "")),
                   reverbMix (addToLayout<Parameter> (layout,
-                                                     ParameterID { ID::convolutionReverbMix, 1 },
+                                                     ID::convolutionReverbMix,
                                                      "Reverb Mix",
+                                                     "%",
                                                      NormalisableRange<float> (0.0f, 100.0f),
                                                      50.0f,
-                                                     getPercentageAttributes())) {}
+                                                     valueToTextFunction,
+                                                     textToValueFunction)) {}
 
             AudioParameterBool& cabEnabled;
             AudioParameterBool& reverbEnabled;
@@ -436,33 +450,42 @@ public:
         {
             explicit CompressorGroup (AudioProcessorParameterGroup& layout)
                 : enabled (addToLayout<AudioParameterBool> (layout,
-                                                            ParameterID { ID::compressorEnabled, 1 },
+                                                            ID::compressorEnabled,
                                                             "Comp.",
-                                                            false)),
+                                                            false,
+                                                            "")),
                   threshold (addToLayout<Parameter> (layout,
-                                                     ParameterID { ID::compressorThreshold, 1 },
+                                                     ID::compressorThreshold,
                                                      "Threshold",
+                                                     "dB",
                                                      NormalisableRange<float> (-100.0f, 0.0f),
                                                      0.0f,
-                                                     getDbAttributes())),
+                                                     valueToTextFunction,
+                                                     textToValueFunction)),
                   ratio (addToLayout<Parameter> (layout,
-                                                 ParameterID { ID::compressorRatio, 1 },
+                                                 ID::compressorRatio,
                                                  "Ratio",
+                                                 ":1",
                                                  NormalisableRange<float> (1.0f, 100.0f, 0.0f, 0.25f),
                                                  1.0f,
-                                                 getRatioAttributes())),
+                                                 valueToTextFunction,
+                                                 textToValueFunction)),
                   attack (addToLayout<Parameter> (layout,
-                                                  ParameterID { ID::compressorAttack, 1 },
+                                                  ID::compressorAttack,
                                                   "Attack",
+                                                  "ms",
                                                   NormalisableRange<float> (0.01f, 1000.0f, 0.0f, 0.25f),
                                                   1.0f,
-                                                  getMsAttributes())),
+                                                  valueToTextFunction,
+                                                  textToValueFunction)),
                   release (addToLayout<Parameter> (layout,
-                                                   ParameterID { ID::compressorRelease, 1 },
+                                                   ID::compressorRelease,
                                                    "Release",
+                                                   "ms",
                                                    NormalisableRange<float> (10.0f, 10000.0f, 0.0f, 0.25f),
                                                    100.0f,
-                                                   getMsAttributes())) {}
+                                                   valueToTextFunction,
+                                                   textToValueFunction)) {}
 
             AudioParameterBool& enabled;
             Parameter& threshold;
@@ -475,33 +498,42 @@ public:
         {
             explicit NoiseGateGroup (AudioProcessorParameterGroup& layout)
                 : enabled (addToLayout<AudioParameterBool> (layout,
-                                                            ParameterID { ID::noiseGateEnabled, 1 },
+                                                            ID::noiseGateEnabled,
                                                             "Gate",
-                                                            false)),
+                                                            false,
+                                                            "")),
                   threshold (addToLayout<Parameter> (layout,
-                                                     ParameterID { ID::noiseGateThreshold, 1 },
+                                                     ID::noiseGateThreshold,
                                                      "Threshold",
+                                                     "dB",
                                                      NormalisableRange<float> (-100.0f, 0.0f),
                                                      -100.0f,
-                                                     getDbAttributes())),
+                                                     valueToTextFunction,
+                                                     textToValueFunction)),
                   ratio (addToLayout<Parameter> (layout,
-                                                 ParameterID { ID::noiseGateRatio, 1 },
+                                                 ID::noiseGateRatio,
                                                  "Ratio",
+                                                 ":1",
                                                  NormalisableRange<float> (1.0f, 100.0f, 0.0f, 0.25f),
                                                  10.0f,
-                                                 getRatioAttributes())),
+                                                 valueToTextFunction,
+                                                 textToValueFunction)),
                   attack (addToLayout<Parameter> (layout,
-                                                  ParameterID { ID::noiseGateAttack, 1 },
+                                                  ID::noiseGateAttack,
                                                   "Attack",
+                                                  "ms",
                                                   NormalisableRange<float> (0.01f, 1000.0f, 0.0f, 0.25f),
                                                   1.0f,
-                                                  getMsAttributes())),
+                                                  valueToTextFunction,
+                                                  textToValueFunction)),
                   release (addToLayout<Parameter> (layout,
-                                                   ParameterID { ID::noiseGateRelease, 1 },
+                                                   ID::noiseGateRelease,
                                                    "Release",
+                                                   "ms",
                                                    NormalisableRange<float> (10.0f, 10000.0f, 0.0f, 0.25f),
                                                    100.0f,
-                                                   getMsAttributes())) {}
+                                                   valueToTextFunction,
+                                                   textToValueFunction)) {}
 
             AudioParameterBool& enabled;
             Parameter& threshold;
@@ -514,21 +546,26 @@ public:
         {
             explicit LimiterGroup (AudioProcessorParameterGroup& layout)
                 : enabled (addToLayout<AudioParameterBool> (layout,
-                                                            ParameterID { ID::limiterEnabled, 1 },
+                                                            ID::limiterEnabled,
                                                             "Limiter",
-                                                            false)),
+                                                            false,
+                                                            "")),
                   threshold (addToLayout<Parameter> (layout,
-                                                     ParameterID { ID::limiterThreshold, 1 },
+                                                     ID::limiterThreshold,
                                                      "Threshold",
+                                                     "dB",
                                                      NormalisableRange<float> (-40.0f, 0.0f),
                                                      0.0f,
-                                                     getDbAttributes())),
+                                                     valueToTextFunction,
+                                                     textToValueFunction)),
                   release (addToLayout<Parameter> (layout,
-                                                   ParameterID { ID::limiterRelease, 1 },
+                                                   ID::limiterRelease,
                                                    "Release",
+                                                   "ms",
                                                    NormalisableRange<float> (10.0f, 10000.0f, 0.0f, 0.25f),
                                                    100.0f,
-                                                   getMsAttributes())) {}
+                                                   valueToTextFunction,
+                                                   textToValueFunction)) {}
 
             AudioParameterBool& enabled;
             Parameter& threshold;
@@ -539,32 +576,39 @@ public:
         {
             explicit DirectDelayGroup (AudioProcessorParameterGroup& layout)
                 : enabled (addToLayout<AudioParameterBool> (layout,
-                                                            ParameterID { ID::directDelayEnabled, 1 },
+                                                            ID::directDelayEnabled,
                                                             "DL Dir.",
-                                                            false)),
+                                                            false,
+                                                            "")),
                   type (addToLayout<AudioParameterChoice> (layout,
-                                                           ParameterID { ID::directDelayType, 1 },
+                                                           ID::directDelayType,
                                                            "DL Type",
                                                            StringArray { "None", "Linear", "Lagrange", "Thiran" },
                                                            1)),
                   value (addToLayout<Parameter> (layout,
-                                                 ParameterID { ID::directDelayValue, 1 },
+                                                 ID::directDelayValue,
                                                  "Delay",
+                                                 "smps",
                                                  NormalisableRange<float> (0.0f, 44100.0f),
                                                  0.0f,
-                                                 getBasicAttributes().withLabel ("smps"))),
+                                                 valueToTextFunction,
+                                                 textToValueFunction)),
                   smoothing (addToLayout<Parameter> (layout,
-                                                     ParameterID { ID::directDelaySmoothing, 1 },
+                                                     ID::directDelaySmoothing,
                                                      "Smooth",
+                                                     "ms",
                                                      NormalisableRange<float> (20.0f, 10000.0f, 0.0f, 0.25f),
                                                      200.0f,
-                                                     getMsAttributes())),
+                                                     valueToTextFunction,
+                                                     textToValueFunction)),
                   mix (addToLayout<Parameter> (layout,
-                                               ParameterID { ID::directDelayMix, 1 },
+                                               ID::directDelayMix,
                                                "Delay Mix",
+                                               "%",
                                                NormalisableRange<float> (0.0f, 100.0f),
                                                50.0f,
-                                               getPercentageAttributes())) {}
+                                               valueToTextFunction,
+                                               textToValueFunction)) {}
 
             AudioParameterBool& enabled;
             AudioParameterChoice& type;
@@ -577,44 +621,55 @@ public:
         {
             explicit DelayEffectGroup (AudioProcessorParameterGroup& layout)
                 : enabled (addToLayout<AudioParameterBool> (layout,
-                                                            ParameterID { ID::delayEffectEnabled, 1 },
+                                                            ID::delayEffectEnabled,
                                                             "DL Effect",
-                                                            false)),
+                                                            false,
+                                                            "")),
                   type (addToLayout<AudioParameterChoice> (layout,
-                                                           ParameterID { ID::delayEffectType, 1 },
+                                                           ID::delayEffectType,
                                                            "DL Type",
                                                            StringArray { "None", "Linear", "Lagrange", "Thiran" },
                                                            1)),
                   value (addToLayout<Parameter> (layout,
-                                                 ParameterID { ID::delayEffectValue, 1 },
+                                                 ID::delayEffectValue,
                                                  "Delay",
+                                                 "ms",
                                                  NormalisableRange<float> (0.01f, 1000.0f),
                                                  100.0f,
-                                                 getMsAttributes())),
+                                                 valueToTextFunction,
+                                                 textToValueFunction)),
                   smoothing (addToLayout<Parameter> (layout,
-                                                     ParameterID { ID::delayEffectSmoothing, 1 },
+                                                     ID::delayEffectSmoothing,
                                                      "Smooth",
+                                                     "ms",
                                                      NormalisableRange<float> (20.0f, 10000.0f, 0.0f, 0.25f),
                                                      400.0f,
-                                                     getMsAttributes())),
+                                                     valueToTextFunction,
+                                                     textToValueFunction)),
                   lowpass (addToLayout<Parameter> (layout,
-                                                   ParameterID { ID::delayEffectLowpass, 1 },
+                                                   ID::delayEffectLowpass,
                                                    "Low-pass",
+                                                   "Hz",
                                                    NormalisableRange<float> (20.0f, 22000.0f, 0.0f, 0.25f),
                                                    22000.0f,
-                                                   getHzAttributes())),
+                                                   valueToTextFunction,
+                                                   textToValueFunction)),
                   mix (addToLayout<Parameter> (layout,
-                                               ParameterID { ID::delayEffectMix, 1 },
+                                               ID::delayEffectMix,
                                                "Delay Mix",
+                                               "%",
                                                NormalisableRange<float> (0.0f, 100.0f),
                                                50.0f,
-                                               getPercentageAttributes())),
+                                               valueToTextFunction,
+                                               textToValueFunction)),
                   feedback (addToLayout<Parameter> (layout,
-                                                    ParameterID { ID::delayEffectFeedback, 1 },
+                                                    ID::delayEffectFeedback,
                                                     "Feedback",
+                                                    "dB",
                                                     NormalisableRange<float> (-100.0f, 0.0f),
                                                     -100.0f,
-                                                    getDbAttributes())) {}
+                                                    valueToTextFunction,
+                                                    textToValueFunction)) {}
 
             AudioParameterBool& enabled;
             AudioParameterChoice& type;
@@ -629,39 +684,50 @@ public:
         {
             explicit PhaserGroup (AudioProcessorParameterGroup& layout)
                 : enabled (addToLayout<AudioParameterBool> (layout,
-                                                            ParameterID { ID::phaserEnabled, 1 },
+                                                            ID::phaserEnabled,
                                                             "Phaser",
-                                                            false)),
+                                                            false,
+                                                            "")),
                   rate (addToLayout<Parameter> (layout,
-                                                ParameterID { ID::phaserRate, 1 },
+                                                ID::phaserRate,
                                                 "Rate",
+                                                "Hz",
                                                 NormalisableRange<float> (0.05f, 20.0f, 0.0f, 0.25f),
                                                 1.0f,
-                                                getHzAttributes())),
+                                                valueToTextFunction,
+                                                textToValueFunction)),
                   depth (addToLayout<Parameter> (layout,
-                                                 ParameterID { ID::phaserDepth, 1 },
+                                                 ID::phaserDepth,
                                                  "Depth",
+                                                 "%",
                                                  NormalisableRange<float> (0.0f, 100.0f),
                                                  50.0f,
-                                                 getPercentageAttributes())),
+                                                 valueToTextFunction,
+                                                 textToValueFunction)),
                   centreFrequency (addToLayout<Parameter> (layout,
-                                                           ParameterID { ID::phaserCentreFrequency, 1 },
+                                                           ID::phaserCentreFrequency,
                                                            "Center",
+                                                           "Hz",
                                                            NormalisableRange<float> (20.0f, 20000.0f, 0.0f, 0.25f),
                                                            600.0f,
-                                                           getHzAttributes())),
+                                                           valueToTextFunction,
+                                                           textToValueFunction)),
                   feedback (addToLayout<Parameter> (layout,
-                                                    ParameterID { ID::phaserFeedback, 1 },
+                                                    ID::phaserFeedback,
                                                     "Feedback",
+                                                    "%",
                                                     NormalisableRange<float> (0.0f, 100.0f),
                                                     50.0f,
-                                                    getPercentageAttributes())),
+                                                    valueToTextFunction,
+                                                    textToValueFunction)),
                   mix (addToLayout<Parameter> (layout,
-                                               ParameterID { ID::phaserMix, 1 },
+                                               ID::phaserMix,
                                                "Mix",
+                                               "%",
                                                NormalisableRange<float> (0.0f, 100.0f),
                                                50.0f,
-                                               getPercentageAttributes())) {}
+                                               valueToTextFunction,
+                                               textToValueFunction)) {}
 
             AudioParameterBool& enabled;
             Parameter& rate;
@@ -675,39 +741,50 @@ public:
         {
             explicit ChorusGroup (AudioProcessorParameterGroup& layout)
                 : enabled (addToLayout<AudioParameterBool> (layout,
-                                                            ParameterID { ID::chorusEnabled, 1 },
+                                                            ID::chorusEnabled,
                                                             "Chorus",
-                                                            false)),
+                                                            false,
+                                                            "")),
                   rate (addToLayout<Parameter> (layout,
-                                                ParameterID { ID::chorusRate, 1 },
+                                                ID::chorusRate,
                                                 "Rate",
+                                                "Hz",
                                                 NormalisableRange<float> (0.05f, 20.0f, 0.0f, 0.25f),
                                                 1.0f,
-                                                getHzAttributes())),
+                                                valueToTextFunction,
+                                                textToValueFunction)),
                   depth (addToLayout<Parameter> (layout,
-                                                 ParameterID { ID::chorusDepth, 1 },
+                                                 ID::chorusDepth,
                                                  "Depth",
+                                                 "%",
                                                  NormalisableRange<float> (0.0f, 100.0f),
                                                  50.0f,
-                                                 getPercentageAttributes())),
+                                                 valueToTextFunction,
+                                                 textToValueFunction)),
                   centreDelay (addToLayout<Parameter> (layout,
-                                                       ParameterID { ID::chorusCentreDelay, 1 },
+                                                       ID::chorusCentreDelay,
                                                        "Center",
+                                                       "ms",
                                                        NormalisableRange<float> (1.0f, 100.0f, 0.0f, 0.25f),
                                                        7.0f,
-                                                       getMsAttributes())),
+                                                       valueToTextFunction,
+                                                       textToValueFunction)),
                   feedback (addToLayout<Parameter> (layout,
-                                                    ParameterID { ID::chorusFeedback, 1 },
+                                                    ID::chorusFeedback,
                                                     "Feedback",
+                                                    "%",
                                                     NormalisableRange<float> (0.0f, 100.0f),
                                                     50.0f,
-                                                    getPercentageAttributes())),
+                                                    valueToTextFunction,
+                                                    textToValueFunction)),
                   mix (addToLayout<Parameter> (layout,
-                                               ParameterID { ID::chorusMix, 1 },
+                                               ID::chorusMix,
                                                "Mix",
+                                               "%",
                                                NormalisableRange<float> (0.0f, 100.0f),
                                                50.0f,
-                                               getPercentageAttributes())) {}
+                                               valueToTextFunction,
+                                               textToValueFunction)) {}
 
             AudioParameterBool& enabled;
             Parameter& rate;
@@ -721,32 +798,39 @@ public:
         {
             explicit LadderGroup (AudioProcessorParameterGroup& layout)
                 : enabled (addToLayout<AudioParameterBool> (layout,
-                                                            ParameterID { ID::ladderEnabled, 1 },
+                                                            ID::ladderEnabled,
                                                             "Ladder",
-                                                            false)),
+                                                            false,
+                                                            "")),
                   mode (addToLayout<AudioParameterChoice> (layout,
-                                                           ParameterID { ID::ladderMode, 1 },
+                                                           ID::ladderMode,
                                                            "Mode",
                                                            StringArray { "LP12", "LP24", "HP12", "HP24", "BP12", "BP24" },
                                                            1)),
                   cutoff (addToLayout<Parameter> (layout,
-                                                  ParameterID { ID::ladderCutoff, 1 },
+                                                  ID::ladderCutoff,
                                                   "Frequency",
+                                                  "Hz",
                                                   NormalisableRange<float> (10.0f, 22000.0f, 0.0f, 0.25f),
                                                   1000.0f,
-                                                  getHzAttributes())),
+                                                  valueToTextFunction,
+                                                  textToValueFunction)),
                   resonance (addToLayout<Parameter> (layout,
-                                                     ParameterID { ID::ladderResonance, 1 },
+                                                     ID::ladderResonance,
                                                      "Resonance",
+                                                     "%",
                                                      NormalisableRange<float> (0.0f, 100.0f),
                                                      0.0f,
-                                                     getPercentageAttributes())),
+                                                     valueToTextFunction,
+                                                     textToValueFunction)),
                   drive (addToLayout<Parameter> (layout,
-                                                 ParameterID { ID::ladderDrive, 1 },
+                                                 ID::ladderDrive,
                                                  "Drive",
+                                                 "dB",
                                                  NormalisableRange<float> (0.0f, 40.0f),
                                                  0.0f,
-                                                 getDbAttributes())) {}
+                                                 valueToTextFunction,
+                                                 textToValueFunction)) {}
 
             AudioParameterBool& enabled;
             AudioParameterChoice& mode;
@@ -1628,7 +1712,7 @@ private:
         {
             if (e.mods.isRightButtonDown())
                 if (auto* c = editor.getHostContext())
-                    if (auto menuInfo = c->getContextMenuForParameter (&param))
+                    if (auto menuInfo = c->getContextMenuForParameterIndex (&param))
                         menuInfo->getEquivalentPopupMenu().showMenuAsync (PopupMenu::Options{}.withTargetComponent (this)
                                                                                               .withMousePosition());
         }

@@ -79,11 +79,8 @@ public:
                 int numberOfClicks,
                 bool mouseWasDragged) noexcept;
 
-    MouseEvent (const MouseEvent&) = default;
-    MouseEvent& operator= (const MouseEvent&) = delete;
-
-    MouseEvent (MouseEvent&&) = default;
-    MouseEvent& operator= (MouseEvent&&) = delete;
+    /** Destructor. */
+    ~MouseEvent() noexcept;
 
     //==============================================================================
     /** The position of the mouse when the event occurred.
@@ -377,6 +374,8 @@ public:
 private:
     //==============================================================================
     const uint8 numberOfClicks, wasMovedSinceMouseDown;
+
+    MouseEvent& operator= (const MouseEvent&);
 };
 
 

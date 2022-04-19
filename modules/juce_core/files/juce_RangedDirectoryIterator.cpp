@@ -39,13 +39,11 @@ float DirectoryEntry::getEstimatedProgress() const
 RangedDirectoryIterator::RangedDirectoryIterator (const File& directory,
                                                   bool isRecursive,
                                                   const String& wildCard,
-                                                  int whatToLookFor,
-                                                  File::FollowSymlinks followSymlinks)
+                                                  int whatToLookFor)
     : iterator (new DirectoryIterator (directory,
                                        isRecursive,
                                        wildCard,
-                                       whatToLookFor,
-                                       followSymlinks))
+                                       whatToLookFor))
 {
     entry.iterator = iterator;
     increment();

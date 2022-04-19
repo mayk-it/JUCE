@@ -107,6 +107,14 @@ public:
             m->listBoxItemClicked (row, e);
     }
 
+    bool isInDragToScrollViewport() const noexcept
+    {
+        if (auto* vp = owner.getViewport())
+            return vp->isScrollOnDragEnabled() && (vp->canScrollVertically() || vp->canScrollHorizontally());
+
+        return false;
+    }
+
     void mouseDown (const MouseEvent& e) override
     {
         isDragging = false;
@@ -115,7 +123,7 @@ public:
 
         if (isEnabled())
         {
-            if (owner.selectOnMouseDown && ! isSelected && ! viewportWouldScrollOnEvent (owner.getViewport(), e.source))
+            if (owner.selectOnMouseDown && ! (isSelected || isInDragToScrollViewport()))
                 performSelection (e, false);
             else
                 selectRowOnMouseUp = true;

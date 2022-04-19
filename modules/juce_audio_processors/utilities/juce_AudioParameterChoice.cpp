@@ -26,13 +26,11 @@
 namespace juce
 {
 
-AudioParameterChoice::AudioParameterChoice (const ParameterID& idToUse,
-                                            const String& nameToUse,
-                                            const StringArray& c,
-                                            int def,
-                                            const AudioParameterChoiceAttributes& attributes)
-   : RangedAudioParameter (idToUse, nameToUse, attributes.getAudioProcessorParameterWithIDAttributes()),
-     choices (c),
+AudioParameterChoice::AudioParameterChoice (const String& idToUse, const String& nameToUse,
+                                            const StringArray& c, int def, const String& labelToUse,
+                                            std::function<String (int, int)> stringFromIndex,
+                                            std::function<int (const String&)> indexFromString)
+   : RangedAudioParameter (idToUse, nameToUse, labelToUse), choices (c),
      range ([this]
             {
                 NormalisableRange<float> rangeWithInterval { 0.0f, (float) choices.size() - 1.0f,
@@ -44,14 +42,16 @@ AudioParameterChoice::AudioParameterChoice (const ParameterID& idToUse,
             }()),
      value ((float) def),
      defaultValue (convertTo0to1 ((float) def)),
-     stringFromIndexFunction (attributes.getStringFromValueFunction() != nullptr
-                                  ? attributes.getStringFromValueFunction()
-                                  : [this] (int index, int) { return choices [index]; }),
-     indexFromStringFunction (attributes.getValueFromStringFunction() != nullptr
-                                  ? attributes.getValueFromStringFunction()
-                                  : [this] (const String& text) { return choices.indexOf (text); })
+     stringFromIndexFunction (stringFromIndex),
+     indexFromStringFunction (indexFromString)
 {
     jassert (choices.size() > 1); // you must supply an actual set of items to choose from!
+
+    if (stringFromIndexFunction == nullptr)
+        stringFromIndexFunction = [this] (int index, int) { return choices [index]; };
+
+    if (indexFromStringFunction == nullptr)
+        indexFromStringFunction = [this] (const String& text) { return choices.indexOf (text); };
 }
 
 AudioParameterChoice::~AudioParameterChoice()

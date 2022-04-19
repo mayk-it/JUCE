@@ -826,14 +826,6 @@ void Project::updateJUCEPathWarning()
     }
 }
 
-void Project::updateCodeWarning (Identifier identifier, String value)
-{
-    if (value.length() != 4 || value.toStdString().size() != 4)
-        addProjectMessage (identifier, {});
-    else
-        removeProjectMessage (identifier);
-}
-
 void Project::updateModuleWarnings()
 {
     auto& modules = getEnabledModules();
@@ -1098,14 +1090,6 @@ void Project::valueTreePropertyChanged (ValueTree& tree, const Identifier& prope
         else if (property == Ids::cppLanguageStandard)
         {
             updateModuleWarnings();
-        }
-        else if (property == Ids::pluginCode)
-        {
-            updateCodeWarning (ProjectMessages::Ids::pluginCodeInvalid, pluginCodeValue.get());
-        }
-        else if (property == Ids::pluginManufacturerCode)
-        {
-            updateCodeWarning (ProjectMessages::Ids::manufacturerCodeInvalid, pluginManufacturerCodeValue.get());
         }
     }
 
@@ -2594,10 +2578,8 @@ StringPairArray Project::getAudioPluginFlags() const
         uint32 hexRepresentation = 0;
 
         for (int i = 0; i < 4; ++i)
-        {
-            const auto character = (unsigned int) (i < fourCharCode.length() ? fourCharCode[i] : 0);
-            hexRepresentation = (hexRepresentation << 8u) | (character & 0xffu);
-        }
+            hexRepresentation = (hexRepresentation << 8u)
+                                | (static_cast<unsigned int> (fourCharCode[i]) & 0xffu);
 
         return "0x" + String::toHexString (static_cast<int> (hexRepresentation));
     };

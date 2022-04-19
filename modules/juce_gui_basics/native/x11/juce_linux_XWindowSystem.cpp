@@ -154,7 +154,7 @@ String XWindowSystemUtilities::Atoms::getName (::Display* display, Atom atom)
     if (atom == None)
         return "None";
 
-    return makeXFreePtr (X11Symbols::getInstance()->xGetAtomName (display, atom)).get();
+    return X11Symbols::getInstance()->xGetAtomName (display, atom);
 }
 
 bool XWindowSystemUtilities::Atoms::isMimeTypeFile (::Display* display, Atom atom)
@@ -968,9 +968,7 @@ public:
     void initialiseBitmapData (Image::BitmapData& bitmap, int x, int y,
                                Image::BitmapData::ReadWriteMode mode) override
     {
-        const auto offset = (size_t) (x * pixelStride + y * lineStride);
-        bitmap.data = imageData + offset;
-        bitmap.size = (size_t) (lineStride * height) - offset;
+        bitmap.data = imageData + x * pixelStride + y * lineStride;
         bitmap.pixelFormat = pixelFormat;
         bitmap.lineStride = lineStride;
         bitmap.pixelStride = pixelStride;
@@ -3200,22 +3198,17 @@ void XWindowSystem::destroyXDisplay()
     {
         jassert (display != nullptr);
 
-        {
-            XWindowSystemUtilities::ScopedXLock xLock;
+        XWindowSystemUtilities::ScopedXLock xLock;
 
-            X11Symbols::getInstance()->xDestroyWindow (display, juce_messageWindowHandle);
-            juce_messageWindowHandle = 0;
-            X11Symbols::getInstance()->xSync (display, True);
-        }
+        X11Symbols::getInstance()->xDestroyWindow (display, juce_messageWindowHandle);
+        juce_messageWindowHandle = 0;
+        X11Symbols::getInstance()->xSync (display, True);
 
         LinuxEventLoop::unregisterFdCallback (X11Symbols::getInstance()->xConnectionNumber (display));
 
-        {
-            XWindowSystemUtilities::ScopedXLock xLock;
-            X11Symbols::getInstance()->xCloseDisplay (display);
-            display = nullptr;
-            displayVisuals = nullptr;
-        }
+        X11Symbols::getInstance()->xCloseDisplay (display);
+        display = nullptr;
+        displayVisuals = nullptr;
     }
 }
 
@@ -3479,8 +3472,8 @@ void XWindowSystem::handleButtonPressEvent (LinuxComponentPeer* peer, const XBut
     ModifierKeys::currentModifiers = ModifierKeys::currentModifiers.withFlags (buttonModifierFlag);
     peer->toFront (true);
     peer->handleMouseEvent (MouseInputSource::InputSourceType::mouse, getLogicalMousePos (buttonPressEvent, peer->getPlatformScaleFactor()),
-                            ModifierKeys::currentModifiers, MouseInputSource::defaultPressure,
-                            MouseInputSource::defaultOrientation, getEventTime (buttonPressEvent), {});
+                            ModifierKeys::currentModifiers, MouseInputSource::invalidPressure,
+                            MouseInputSource::invalidOrientation, getEventTime (buttonPressEvent), {});
 }
 
 void XWindowSystem::handleButtonPressEvent (LinuxComponentPeer* peer, const XButtonPressedEvent& buttonPressEvent) const
@@ -3529,7 +3522,7 @@ void XWindowSystem::handleButtonReleaseEvent (LinuxComponentPeer* peer, const XB
         dragState.handleExternalDragButtonReleaseEvent();
 
     peer->handleMouseEvent (MouseInputSource::InputSourceType::mouse, getLogicalMousePos (buttonRelEvent, peer->getPlatformScaleFactor()),
-                            ModifierKeys::currentModifiers, MouseInputSource::defaultPressure, MouseInputSource::defaultOrientation, getEventTime (buttonRelEvent));
+                            ModifierKeys::currentModifiers, MouseInputSource::invalidPressure, MouseInputSource::invalidOrientation, getEventTime (buttonRelEvent));
 }
 
 void XWindowSystem::handleMotionNotifyEvent (LinuxComponentPeer* peer, const XPointerMovedEvent& movedEvent) const
@@ -3542,8 +3535,8 @@ void XWindowSystem::handleMotionNotifyEvent (LinuxComponentPeer* peer, const XPo
         dragState.handleExternalDragMotionNotify();
 
     peer->handleMouseEvent (MouseInputSource::InputSourceType::mouse, getLogicalMousePos (movedEvent, peer->getPlatformScaleFactor()),
-                            ModifierKeys::currentModifiers, MouseInputSource::defaultPressure,
-                            MouseInputSource::defaultOrientation, getEventTime (movedEvent));
+                            ModifierKeys::currentModifiers, MouseInputSource::invalidPressure,
+                            MouseInputSource::invalidOrientation, getEventTime (movedEvent));
 }
 
 void XWindowSystem::handleEnterNotifyEvent (LinuxComponentPeer* peer, const XEnterWindowEvent& enterEvent) const
@@ -3555,8 +3548,8 @@ void XWindowSystem::handleEnterNotifyEvent (LinuxComponentPeer* peer, const XEnt
     {
         updateKeyModifiers ((int) enterEvent.state);
         peer->handleMouseEvent (MouseInputSource::InputSourceType::mouse, getLogicalMousePos (enterEvent, peer->getPlatformScaleFactor()),
-                                ModifierKeys::currentModifiers, MouseInputSource::defaultPressure,
-                                MouseInputSource::defaultOrientation, getEventTime (enterEvent));
+                                ModifierKeys::currentModifiers, MouseInputSource::invalidPressure,
+                                MouseInputSource::invalidOrientation, getEventTime (enterEvent));
     }
 }
 
@@ -3570,8 +3563,8 @@ void XWindowSystem::handleLeaveNotifyEvent (LinuxComponentPeer* peer, const XLea
     {
         updateKeyModifiers ((int) leaveEvent.state);
         peer->handleMouseEvent (MouseInputSource::InputSourceType::mouse, getLogicalMousePos (leaveEvent, peer->getPlatformScaleFactor()),
-                                ModifierKeys::currentModifiers, MouseInputSource::defaultPressure,
-                                MouseInputSource::defaultOrientation, getEventTime (leaveEvent));
+                                ModifierKeys::currentModifiers, MouseInputSource::invalidPressure,
+                                MouseInputSource::invalidOrientation, getEventTime (leaveEvent));
     }
 }
 

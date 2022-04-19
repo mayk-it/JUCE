@@ -83,7 +83,7 @@ public:
         HyperlinkButton* const hb = dynamic_cast<HyperlinkButton*> (comp);
 
         return quotedString (hb->getButtonText(), code.shouldUseTransMacro())
-                + ",\njuce::URL ("
+                + ",\nURL ("
                 + quotedString (hb->getURL().toString (false), false)
                 + ")";
     }

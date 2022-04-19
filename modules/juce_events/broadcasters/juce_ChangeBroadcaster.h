@@ -86,7 +86,6 @@ private:
     {
     public:
         ChangeBroadcasterCallback();
-        ~ChangeBroadcasterCallback() override { cancelPendingUpdate(); }
         void handleAsyncUpdate() override;
 
         ChangeBroadcaster* owner;

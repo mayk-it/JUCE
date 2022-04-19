@@ -49,12 +49,13 @@ namespace AccessibilityTextHelpers
     {
         const auto numCharacters = textInterface.getTotalNumCharacters();
         const auto isForwards = (direction == Direction::forwards);
-        const auto offsetWithDirection = [isForwards] (auto num) { return isForwards ? num : -num; };
+
+        auto offsetWithDirecton = [isForwards] (int input) { return isForwards ? input : -input; };
 
         switch (boundary)
         {
             case BoundaryType::character:
-                return jlimit (0, numCharacters, currentPosition + offsetWithDirection (1));
+                return jlimit (0, numCharacters, currentPosition + offsetWithDirecton (1));
 
             case BoundaryType::word:
             case BoundaryType::line:
@@ -95,7 +96,7 @@ namespace AccessibilityTextHelpers
                 auto tokens = (boundary == BoundaryType::line ? StringArray::fromLines (text)
                                                               : StringArray::fromTokens (text, false));
 
-                return currentPosition + offsetWithDirection (tokens[0].length());
+                return currentPosition + offsetWithDirecton (tokens[0].length());
             }
 
             case BoundaryType::document:

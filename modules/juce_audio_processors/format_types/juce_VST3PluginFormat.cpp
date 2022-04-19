@@ -1348,7 +1348,9 @@ struct VST3PluginWindow : public AudioProcessorEditor,
         warnOnFailure (view->setFrame (this));
         view->queryInterface (Steinberg::IPlugViewContentScaleSupport::iid, (void**) &scaleInterface);
 
-        setContentScaleFactor();
+        if (scaleInterface != nullptr)
+            warnOnFailure (scaleInterface->setContentScaleFactor ((Steinberg::IPlugViewContentScaleSupport::ScaleFactor) nativeScaleFactor));
+
         resizeToFit();
     }
 
@@ -1363,9 +1365,7 @@ struct VST3PluginWindow : public AudioProcessorEditor,
          embeddedComponent.removeClient();
         #endif
 
-        if (attachedCalled)
-            warnOnFailure (view->removed());
-
+        warnOnFailure (view->removed());
         warnOnFailure (view->setFrame (nullptr));
 
         processor.editorBeingDeleted (this);
@@ -1573,12 +1573,7 @@ private:
                 return;
             }
 
-            const auto attachedResult = view->attached ((void*) pluginHandle, defaultVST3WindowType);
-            ignoreUnused (warnOnFailure (attachedResult));
-
-            if (attachedResult == kResultOk)
-                attachedCalled = true;
-
+            warnOnFailure (view->attached ((void*) pluginHandle, defaultVST3WindowType));
             updatePluginScale();
         }
     }
@@ -1596,22 +1591,9 @@ private:
     void updatePluginScale()
     {
         if (scaleInterface != nullptr)
-            setContentScaleFactor();
+            warnOnFailure (scaleInterface->setContentScaleFactor ((Steinberg::IPlugViewContentScaleSupport::ScaleFactor) nativeScaleFactor));
         else
             resizeToFit();
-    }
-
-    void setContentScaleFactor()
-    {
-        if (scaleInterface != nullptr)
-        {
-            const auto result = scaleInterface->setContentScaleFactor ((Steinberg::IPlugViewContentScaleSupport::ScaleFactor) nativeScaleFactor);
-            ignoreUnused (result);
-
-           #if ! JUCE_MAC
-            ignoreUnused (warnOnFailure (result));
-           #endif
-        }
     }
 
     //==============================================================================
@@ -1659,7 +1641,7 @@ private:
    #endif
 
     HandleFormat pluginHandle = {};
-    bool recursiveResize = false, isInOnSize = false, attachedCalled = false;
+    bool recursiveResize = false, isInOnSize = false;
 
     ComponentPeer* currentPeer = nullptr;
     Steinberg::IPlugViewContentScaleSupport* scaleInterface = nullptr;
@@ -1687,33 +1669,16 @@ struct VST3ComponentHolder
     // transfers ownership to the plugin instance!
     AudioPluginInstance* createPluginInstance();
 
-    bool isIComponentAlsoIEditController() const
-    {
-        if (component == nullptr)
-        {
-            jassertfalse;
-            return false;
-        }
-
-        return VSTComSmartPtr<Vst::IEditController>().loadFrom (component);
-    }
-
     bool fetchController (VSTComSmartPtr<Vst::IEditController>& editController)
     {
         if (! isComponentInitialised && ! initialise())
             return false;
 
-        editController.loadFrom (component);
-
         // Get the IEditController:
         TUID controllerCID = { 0 };
 
-        if (editController == nullptr
-            && component->getControllerClassId (controllerCID) == kResultTrue
-            && FUID (controllerCID).isValid())
-        {
+        if (component->getControllerClassId (controllerCID) == kResultTrue && FUID (controllerCID).isValid())
             editController.loadFrom (factory, controllerCID);
-        }
 
         if (editController == nullptr)
         {
@@ -1729,6 +1694,9 @@ struct VST3ComponentHolder
                     editController.loadFrom (factory, classInfo.cid);
             }
         }
+
+        if (editController == nullptr)
+            editController.loadFrom (component);
 
         return (editController != nullptr);
     }
@@ -2245,7 +2213,7 @@ public:
 
         editController->setComponentHandler (nullptr);
 
-        if (isControllerInitialised && ! holder->isIComponentAlsoIEditController())
+        if (isControllerInitialised)
             editController->terminate();
 
         holder->terminate();
@@ -2277,10 +2245,8 @@ public:
         if (! (isControllerInitialised || holder->fetchController (editController)))
             return false;
 
-        // If the IComponent and IEditController are the same, we will have
-        // already initialized the object at this point and should avoid doing so again.
-        if (! holder->isIComponentAlsoIEditController())
-            editController->initialize (holder->host->getFUnknown());
+        // (May return an error if the plugin combines the IComponent and IEditController implementations)
+        editController->initialize (holder->host->getFUnknown());
 
         isControllerInitialised = true;
         editController->setComponentHandler (holder->host);
@@ -2435,9 +2401,7 @@ public:
             warnOnFailure (holder->component->activateBus (Vst::kAudio, Vst::kOutput, i, getBus (false, i)->isEnabled() ? 1 : 0));
 
         setLatencySamples (jmax (0, (int) processor->getLatencySamples()));
-
-        inputBusMap .prepare (createChannelMappings (true));
-        outputBusMap.prepare (createChannelMappings (false));
+        cachedBusLayouts = getBusesLayout();
 
         setStateForAllMidiBuses (true);
 
@@ -2456,13 +2420,13 @@ public:
 
         isActive = false;
 
+        setStateForAllMidiBuses (false);
+
         if (processor != nullptr)
             warnOnFailureIfImplemented (processor->setProcessing (false));
 
         if (holder->component != nullptr)
             warnOnFailure (holder->component->setActive (false));
-
-        setStateForAllMidiBuses (false);
     }
 
     bool supportsDoublePrecisionProcessing() const override
@@ -2672,7 +2636,7 @@ public:
 
         bool result = syncBusLayouts (layouts);
 
-        // didn't succeed? Make sure it's back in its original state
+        // didn't succeed? Make sure it's back in it's original state
         if (! result)
             syncBusLayouts (getBusesLayout());
 
@@ -2939,7 +2903,7 @@ public:
 
     MemoryBlock getStateForPresetFile() const
     {
-        VSTComSmartPtr<Steinberg::MemoryStream> memoryStream (new Steinberg::MemoryStream(), false);
+        VSTComSmartPtr<Steinberg::MemoryStream> memoryStream = new Steinberg::MemoryStream();
 
         if (memoryStream == nullptr || holder->component == nullptr)
             return {};
@@ -2957,8 +2921,8 @@ public:
 
     bool setStateFromPresetFile (const MemoryBlock& rawData) const
     {
-        auto rawDataCopy = rawData;
-        VSTComSmartPtr<Steinberg::MemoryStream> memoryStream (new Steinberg::MemoryStream (rawDataCopy.getData(), (int) rawDataCopy.getSize()), false);
+        MemoryBlock rawDataCopy (rawData);
+        VSTComSmartPtr<Steinberg::MemoryStream> memoryStream = new Steinberg::MemoryStream (rawDataCopy.getData(), (int) rawDataCopy.getSize());
 
         if (memoryStream == nullptr || holder->component == nullptr)
             return false;
@@ -3019,7 +2983,9 @@ private:
         even if there aren't enough channels to process,
         as very poorly specified by the Steinberg SDK
     */
-    HostBufferMapper inputBusMap, outputBusMap;
+    VST3FloatAndDoubleBusMapComposite inputBusMap, outputBusMap;
+    Array<Vst::AudioBusBuffers> inputBuses, outputBuses;
+    AudioProcessor::BusesLayout cachedBusLayouts;
 
     StringArray programNames;
     Vst::ParamID programParameterID = (Vst::ParamID) -1;
@@ -3214,17 +3180,6 @@ private:
         setStateForAllBusesOfType (holder->component, newState, false, false);  // Activate/deactivate MIDI outputs
     }
 
-    std::vector<ChannelMapping> createChannelMappings (bool isInput) const
-    {
-        std::vector<ChannelMapping> result;
-        result.reserve ((size_t) getBusCount (isInput));
-
-        for (auto i = 0; i < getBusCount (isInput); ++i)
-            result.emplace_back (*getBus (isInput, i));
-
-        return result;
-    }
-
     void setupIO()
     {
         setStateForAllMidiBuses (true);
@@ -3237,8 +3192,7 @@ private:
 
         warnOnFailure (processor->setupProcessing (setup));
 
-        inputBusMap .prepare (createChannelMappings (true));
-        outputBusMap.prepare (createChannelMappings (false));
+        cachedBusLayouts = getBusesLayout();
         setRateAndBufferSizeDetails (setup.sampleRate, (int) setup.maxSamplesPerBlock);
     }
 
@@ -3329,8 +3283,11 @@ private:
     template <typename FloatType>
     void associateWith (Vst::ProcessData& destination, AudioBuffer<FloatType>& buffer)
     {
-        destination.inputs  = inputBusMap .getVst3LayoutForJuceBuffer (buffer);
-        destination.outputs = outputBusMap.getVst3LayoutForJuceBuffer (buffer);
+        VST3BufferExchange<FloatType>::mapBufferToBuses (inputBuses,  inputBusMap.get<FloatType>(),  cachedBusLayouts.inputBuses,  buffer);
+        VST3BufferExchange<FloatType>::mapBufferToBuses (outputBuses, outputBusMap.get<FloatType>(), cachedBusLayouts.outputBuses, buffer);
+
+        destination.inputs  = inputBuses.getRawDataPointer();
+        destination.outputs = outputBuses.getRawDataPointer();
     }
 
     void associateWith (Vst::ProcessData& destination, MidiBuffer& midiBuffer)

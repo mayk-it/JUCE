@@ -551,14 +551,7 @@ inline std::unique_ptr<AudioFormatReader> makeAudioFormatReader (AudioFormatMana
 class AudioFormatReaderFactory
 {
 public:
-    AudioFormatReaderFactory() = default;
-    AudioFormatReaderFactory (const AudioFormatReaderFactory&) = default;
-    AudioFormatReaderFactory (AudioFormatReaderFactory&&) = default;
-    AudioFormatReaderFactory& operator= (const AudioFormatReaderFactory&) = default;
-    AudioFormatReaderFactory& operator= (AudioFormatReaderFactory&&) = default;
-
     virtual ~AudioFormatReaderFactory() noexcept = default;
-
     virtual std::unique_ptr<AudioFormatReader> make (AudioFormatManager&) const = 0;
     virtual std::unique_ptr<AudioFormatReaderFactory> clone() const = 0;
 };

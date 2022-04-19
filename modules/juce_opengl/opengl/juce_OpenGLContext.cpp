@@ -359,7 +359,7 @@ public:
         if (auto* peer = component.getPeer())
         {
            #if JUCE_MAC
-            const auto displayScale = Desktop::getInstance().getGlobalScaleFactor() * [this]
+            const auto displayScale = [this]
             {
                 if (auto* wrapper = cvDisplayLinkWrapper.get())
                     if (wrapper->updateActiveDisplay())
@@ -409,7 +409,7 @@ public:
 
     void bindVertexArray() noexcept
     {
-        if (shouldUseCustomVAO())
+        if (openGLVersion.major >= 3)
             if (vertexArrayObject != 0)
                 context.extensions.glBindVertexArray (vertexArrayObject);
     }
@@ -616,7 +616,9 @@ public:
 
         gl::loadFunctions();
 
-        if (shouldUseCustomVAO())
+        openGLVersion = getOpenGLVersion();
+
+        if (openGLVersion.major >= 3)
         {
             context.extensions.glGenVertexArrays (1, &vertexArrayObject);
             bindVertexArray();
@@ -658,31 +660,6 @@ public:
         associatedObjects.clear();
         cachedImageFrameBuffer.release();
         nativeContext->shutdownOnRenderThread();
-    }
-
-    /*  Returns true if the context requires a non-zero vertex array object (VAO) to be bound.
-
-        If the context is a compatibility context, we can just pretend that VAOs don't exist,
-        and use the default VAO all the time instead. This provides a more consistent experience
-        in user code, which might make calls (like glVertexPointer()) that only work when VAO 0 is
-        bound in OpenGL 3.2+.
-    */
-    bool shouldUseCustomVAO() const
-    {
-       #if JUCE_OPENGL_ES
-        return false;
-       #else
-        clearGLError();
-        GLint mask = 0;
-        glGetIntegerv (GL_CONTEXT_PROFILE_MASK, &mask);
-
-        // The context isn't aware of the profile mask, so it pre-dates the core profile
-        if (glGetError() == GL_INVALID_ENUM)
-            return false;
-
-        // Also assumes a compatibility profile if the mask is completely empty for some reason
-        return (mask & (GLint) GL_CONTEXT_CORE_PROFILE_BIT) != 0;
-       #endif
     }
 
     //==============================================================================
@@ -775,6 +752,7 @@ public:
     OpenGLContext& context;
     Component& component;
 
+    Version openGLVersion;
     OpenGLFrameBuffer cachedImageFrameBuffer;
     RectangleList<int> validArea;
     Rectangle<int> lastScreenBounds;

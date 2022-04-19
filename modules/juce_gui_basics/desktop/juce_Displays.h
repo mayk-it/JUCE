@@ -166,6 +166,8 @@ public:
    #ifndef DOXYGEN
     /** @internal */
     void refresh();
+    /** @internal */
+    ~Displays() = default;
 
     [[deprecated ("Use the getDisplayForPoint or getDisplayForRect methods instead "
                  "as they can deal with converting between logical and physical pixels.")]]

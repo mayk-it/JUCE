@@ -588,7 +588,7 @@ public:
 
                 AudioBuffer<float> chans (channels, totalChans, numSamples);
 
-                if (mBypassed && juceFilter->getBypassParameter() == nullptr)
+                if (mBypassed)
                     juceFilter->processBlockBypassed (chans, midiEvents);
                 else
                     juceFilter->processBlock (chans, midiEvents);
@@ -685,10 +685,6 @@ public:
         else
         {
             mBypassed = (value > 0);
-
-            if (auto* param = juceFilter->getBypassParameter())
-                if (mBypassed != (param->getValue() >= 0.5f))
-                    param.setValueNotifyingHost (mBypassed ? 1.0f : 0.0f);
         }
 
         return CProcess::UpdateControlValue (controlIndex, value);

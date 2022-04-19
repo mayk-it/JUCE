@@ -115,8 +115,8 @@ public:
             const Time eventTime (getMouseEventTime());
 
             const MouseEvent e (Desktop::getInstance().getMainMouseSource(), {}, eventMods,
-                                MouseInputSource::defaultPressure, MouseInputSource::defaultOrientation,
-                                MouseInputSource::defaultRotation, MouseInputSource::defaultTiltX, MouseInputSource::defaultTiltY,
+                                MouseInputSource::invalidPressure, MouseInputSource::invalidOrientation,
+                                MouseInputSource::invalidRotation, MouseInputSource::invalidTiltX, MouseInputSource::invalidTiltY,
                                 &owner, &owner, eventTime, {}, eventTime, 1, false);
 
             if (lParam == WM_LBUTTONDOWN || lParam == WM_RBUTTONDOWN)

@@ -58,6 +58,8 @@ public:
     /** Constructor. */
     SmoothedValueBase() = default;
 
+    virtual ~SmoothedValueBase() {}
+
     //==============================================================================
     /** Returns true if the current value is currently being interpolated. */
     bool isSmoothing() const noexcept                    { return countdown > 0; }

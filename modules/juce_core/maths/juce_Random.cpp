@@ -32,6 +32,10 @@ Random::Random()  : seed (1)
     setSeedRandomly();
 }
 
+Random::~Random() noexcept
+{
+}
+
 void Random::setSeed (const int64 newSeed) noexcept
 {
     if (this == &getSystemRandom())

@@ -104,29 +104,23 @@ void ComponentBoundsConstrainer::setBoundsForComponent (Component* component,
 {
     jassert (component != nullptr);
 
-    auto bounds = targetBounds;
+    Rectangle<int> limits, bounds (targetBounds);
+    BorderSize<int> border;
 
-    auto limits = [&]() -> Rectangle<int>
+    if (auto* parent = component->getParentComponent())
     {
-        if (auto* parent = component->getParentComponent())
-            return { parent->getWidth(), parent->getHeight() };
-
-        if (auto* display = Desktop::getInstance().getDisplays().getDisplayForPoint (targetBounds.getCentre()))
-            return component->getLocalArea (nullptr, display->userArea) + component->getPosition();
-
-        const auto max = std::numeric_limits<int>::max();
-        return { max, max };
-    }();
-
-    auto border = [&]() -> BorderSize<int>
+        limits.setSize (parent->getWidth(), parent->getHeight());
+    }
+    else
     {
-        if (component->getParentComponent() == nullptr)
-            if (auto* peer = component->getPeer())
-                if (const auto frameSize = peer->getFrameSizeIfPresent())
-                    return *frameSize;
+        if (auto* peer = component->getPeer())
+            if (const auto frameSize = peer->getFrameSizeIfPresent())
+                border = *frameSize;
 
-        return {};
-    }();
+        auto screenBounds = Desktop::getInstance().getDisplays().getDisplayForPoint (targetBounds.getCentre())->userArea;
+
+        limits = component->getLocalArea (nullptr, screenBounds) + component->getPosition();
+    }
 
     border.addTo (bounds);
 

@@ -203,8 +203,7 @@ public:
     */
     Point<ValueType> getPointAlongLine (ValueType distanceFromStart) const noexcept
     {
-        const auto length = getLength();
-        return length == 0 ? start : start + (end - start) * (distanceFromStart / length);
+        return start + (end - start) * (distanceFromStart / getLength());
     }
 
     /** Returns a point which is a certain distance along and to the side of this line.
@@ -329,16 +328,6 @@ public:
                 && point.y < ((end.y - start.y) * (point.x - start.x)) / (end.x - start.x) + start.y;
     }
 
-    /** Returns a lengthened copy of this line.
-
-        This will extend the line by a certain amount by moving the start away from the end
-        (leaving the end-point the same), and return the new line.
-    */
-    Line withLengthenedStart (ValueType distanceToLengthenBy) const noexcept
-    {
-        return withShortenedStart (-distanceToLengthenBy);
-    }
-
     //==============================================================================
     /** Returns a shortened copy of this line.
 
@@ -348,16 +337,6 @@ public:
     Line withShortenedStart (ValueType distanceToShortenBy) const noexcept
     {
         return { getPointAlongLine (jmin (distanceToShortenBy, getLength())), end };
-    }
-
-    /** Returns a lengthened copy of this line.
-
-        This will extend the line by a certain amount by moving the end away from the start
-        (leaving the start-point the same), and return the new line.
-    */
-    Line withLengthenedEnd (ValueType distanceToLengthenBy) const noexcept
-    {
-        return withShortenedEnd (-distanceToLengthenBy);
     }
 
     /** Returns a shortened copy of this line.

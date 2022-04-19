@@ -50,15 +50,17 @@ namespace
 
 static void getDeviceSampleRates (snd_pcm_t* handle, Array<double>& rates)
 {
+    const int ratesToTry[] = { 22050, 24000, 32000, 44100, 48000, 88200, 96000, 176400, 192000, 0 };
+
     snd_pcm_hw_params_t* hwParams;
     snd_pcm_hw_params_alloca (&hwParams);
 
-    for (const auto rateToTry : SampleRateHelpers::getAllSampleRates())
+    for (int i = 0; ratesToTry[i] != 0; ++i)
     {
         if (snd_pcm_hw_params_any (handle, hwParams) >= 0
-             && snd_pcm_hw_params_test_rate (handle, hwParams, (unsigned int) rateToTry, 0) == 0)
+             && snd_pcm_hw_params_test_rate (handle, hwParams, (unsigned int) ratesToTry[i], 0) == 0)
         {
-            rates.addIfNotAlreadyThere (rateToTry);
+            rates.addIfNotAlreadyThere ((double) ratesToTry[i]);
         }
     }
 }
@@ -790,7 +792,7 @@ private:
     const String inputId, outputId;
     std::unique_ptr<ALSADevice> outputDevice, inputDevice;
     std::atomic<int> numCallbacks { 0 };
-    std::atomic<bool> audioIoInProgress { false };
+    bool audioIoInProgress = false;
 
     CriticalSection callbackLock;
 

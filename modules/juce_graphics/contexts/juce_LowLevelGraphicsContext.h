@@ -46,10 +46,10 @@ class JUCE_API  LowLevelGraphicsContext
 {
 protected:
     //==============================================================================
-    LowLevelGraphicsContext() = default;
+    LowLevelGraphicsContext();
 
 public:
-    virtual ~LowLevelGraphicsContext() = default;
+    virtual ~LowLevelGraphicsContext();
 
     /** Returns true if this device is vector-based, e.g. a printer. */
     virtual bool isVectorDevice() const = 0;

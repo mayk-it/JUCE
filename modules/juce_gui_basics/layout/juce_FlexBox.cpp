@@ -738,6 +738,9 @@ private:
 };
 
 //==============================================================================
+FlexBox::FlexBox() noexcept = default;
+FlexBox::~FlexBox() noexcept = default;
+
 FlexBox::FlexBox (JustifyContent jc) noexcept  : justifyContent (jc) {}
 
 FlexBox::FlexBox (Direction d, Wrap w, AlignContent ac, AlignItems ai, JustifyContent jc) noexcept

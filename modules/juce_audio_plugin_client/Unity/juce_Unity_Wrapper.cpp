@@ -126,8 +126,8 @@ public:
     {
         ModifierKeys::currentModifiers = mods;
 
-        handleMouseEvent (juce::MouseInputSource::mouse, position, mods, juce::MouseInputSource::defaultPressure,
-                          juce::MouseInputSource::defaultOrientation, juce::Time::currentTimeMillis());
+        handleMouseEvent (juce::MouseInputSource::mouse, position, mods, juce::MouseInputSource::invalidPressure,
+                          juce::MouseInputSource::invalidOrientation, juce::Time::currentTimeMillis());
     }
 
     void forwardKeyPress (int code, String name, ModifierKeys mods)
@@ -162,9 +162,7 @@ private:
         {
             ignoreUnused (mode);
 
-            const auto offset = (size_t) x * (size_t) pixelStride + (size_t) y * (size_t) lineStride;
-            bitmap.data = imageData + offset;
-            bitmap.size = (size_t) (lineStride * height) - offset;
+            bitmap.data = imageData + x * pixelStride + y * lineStride;
             bitmap.pixelFormat = pixelFormat;
             bitmap.lineStride = lineStride;
             bitmap.pixelStride = pixelStride;
@@ -201,7 +199,7 @@ private:
 
                 if (! ms.getCurrentModifiers().isLeftButtonDown())
                     owner.handleMouseEvent (juce::MouseInputSource::mouse, owner.globalToLocal (pos.toFloat()), {},
-                                            juce::MouseInputSource::defaultPressure, juce::MouseInputSource::defaultOrientation, juce::Time::currentTimeMillis());
+                                            juce::MouseInputSource::invalidPressure, juce::MouseInputSource::invalidOrientation, juce::Time::currentTimeMillis());
 
                 lastMousePos = pos;
             }
@@ -352,11 +350,6 @@ public:
 
     void process (float* inBuffer, float* outBuffer, int bufferSize, int numInChannels, int numOutChannels, bool isBypassed)
     {
-        // If the plugin has a bypass parameter, set it to the current bypass state
-        if (auto* param = pluginInstance->getBypassParameter())
-            if (isBypassed != (param->getValue() >= 0.5f))
-                param->setValueNotifyingHost (isBypassed ? 1.0f : 0.0f);
-
         for (int pos = 0; pos < bufferSize;)
         {
             auto max = jmin (bufferSize - pos, samplesPerBlock);
@@ -459,7 +452,7 @@ private:
             {
                 MidiBuffer mb;
 
-                if (isBypassed && pluginInstance->getBypassParameter() == nullptr)
+                if (isBypassed)
                     pluginInstance->processBlockBypassed (scratchBuffer, mb);
                 else
                     pluginInstance->processBlock (scratchBuffer, mb);
@@ -626,7 +619,8 @@ namespace UnityCallbacks
             auto isMuted   = ((state->flags & stateIsMuted)   != 0);
             auto isPaused  = ((state->flags & stateIsPaused)  != 0);
 
-            const auto bypassed = ! isPlaying || (isMuted || isPaused);
+            auto bypassed = ! isPlaying || (isMuted || isPaused);
+
             pluginInstance->process (inBuffer, outBuffer, static_cast<int> (bufferSize), numInChannels, numOutChannels, bypassed);
         }
         else

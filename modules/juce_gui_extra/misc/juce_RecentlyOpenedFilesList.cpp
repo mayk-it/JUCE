@@ -31,6 +31,10 @@ RecentlyOpenedFilesList::RecentlyOpenedFilesList()
 {
 }
 
+RecentlyOpenedFilesList::~RecentlyOpenedFilesList()
+{
+}
+
 //==============================================================================
 void RecentlyOpenedFilesList::setMaxNumberOfItems (const int newMaxNumber)
 {
