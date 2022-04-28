@@ -1415,7 +1415,12 @@ int iOSAudioIODevice::getCurrentBitDepth()                          { return 16;
 BigInteger iOSAudioIODevice::getActiveInputChannels() const         { return pimpl->channelData.inputs->activeChannels; }
 BigInteger iOSAudioIODevice::getActiveOutputChannels() const        { return pimpl->channelData.outputs->activeChannels; }
 
-int iOSAudioIODevice::getInputLatencyInSamples()                    { return roundToInt (pimpl->sampleRate * [AVAudioSession sharedInstance].inputLatency); }
+int iOSAudioIODevice::getInputLatencyInSamples() {
+  const auto vpioLatency = 4496;
+  const auto normalLatency = roundToInt(pimpl->sampleRate * [AVAudioSession sharedInstance].inputLatency);
+  return pimpl->isUsingBuiltInSpeaker() ? vpioLatency : normalLatency;
+}
+
 int iOSAudioIODevice::getOutputLatencyInSamples()                   { return roundToInt (pimpl->sampleRate * [AVAudioSession sharedInstance].outputLatency); }
 int iOSAudioIODevice::getXRunCount() const noexcept                 { return pimpl->xrun; }
 
