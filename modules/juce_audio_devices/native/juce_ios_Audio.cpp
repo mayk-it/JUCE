@@ -289,8 +289,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
 
         if (category == AVAudioSessionCategoryPlayAndRecord)
         {
-            options |= (AVAudioSessionCategoryOptionDefaultToSpeaker
-                      | AVAudioSessionCategoryOptionAllowBluetooth);
+            options |= AVAudioSessionCategoryOptionDefaultToSpeaker;
 
            #if defined (__IPHONE_10_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_10_0
             if (@available (iOS 10.0, *))
@@ -561,6 +560,18 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
                                        error: &error]);
 
         return session.mode == mode;
+    }
+    
+    bool setAnalogInputGain (float gain)
+    {
+        auto session = [AVAudioSession sharedInstance];
+
+        if (session.isInputGainSettable) {
+            JUCE_NSERROR_CHECK ([session setInputGain: gain
+                                           error: &error]);
+        }
+
+        return session.inputGain == gain;
     }
 
     //==============================================================================
@@ -962,11 +973,13 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
 
         AudioComponentDescription desc;
         desc.componentType = kAudioUnitType_Output;
-        desc.componentSubType = kAudioUnitSubType_RemoteIO;
+        desc.componentSubType = isUsingBuiltInSpeaker() ? kAudioUnitSubType_VoiceProcessingIO : kAudioUnitSubType_RemoteIO;
         desc.componentManufacturer = kAudioUnitManufacturer_Apple;
         desc.componentFlags = 0;
         desc.componentFlagsMask = 0;
-
+                
+        setAnalogInputGain(0.5f);
+        
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
         AudioComponentInstanceNew (comp, &audioUnit);
 
@@ -1098,6 +1111,21 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
                 setAudioSessionActive (true);
             }
         }
+    }
+
+    static bool isUsingBuiltInSpeaker()
+    {
+      auto session = [AVAudioSession sharedInstance];
+      auto route = session.currentRoute;
+
+      for (AVAudioSessionPortDescription* port in route.outputs)
+      {
+        if (![port.portType isEqualToString: AVAudioSessionPortBuiltInSpeaker])
+        {
+          return false;
+        }
+      }
+      return true;
     }
 
     void restart()
@@ -1342,7 +1370,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
    #if TARGET_IPHONE_SIMULATOR
     static constexpr int defaultBufferSize = 512;
    #else
-    static constexpr int defaultBufferSize = 256;
+    static constexpr int defaultBufferSize = 1024;
    #endif
     int targetBufferSize = defaultBufferSize, bufferSize = targetBufferSize;
 
