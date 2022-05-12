@@ -66,10 +66,10 @@ void DirectoryContentsList::setDirectory (const File& directory,
 
     auto newFlags = fileTypeFlags;
 
-    if (includeDirectories) newFlags |= File::findDirectories;
+    if (includeDirectories) newFlags |=  File::findDirectories;
     else                    newFlags &= ~File::findDirectories;
 
-    if (includeFiles)       newFlags |= File::findFiles;
+    if (includeFiles)       newFlags |=  File::findFiles;
     else                    newFlags &= ~File::findFiles;
 
     setTypeFlags (newFlags);
@@ -88,7 +88,7 @@ void DirectoryContentsList::stopSearching()
 {
     shouldStop = true;
     thread.removeTimeSliceClient (this);
-    fileFindHandle = nullptr;
+    isSearching = false;
 }
 
 void DirectoryContentsList::clear()
@@ -112,6 +112,7 @@ void DirectoryContentsList::refresh()
     {
         fileFindHandle = std::make_unique<RangedDirectoryIterator> (root, false, "*", fileTypeFlags);
         shouldStop = false;
+        isSearching = true;
         thread.addTimeSliceClient (this);
     }
 }
@@ -165,7 +166,7 @@ bool DirectoryContentsList::contains (const File& targetFile) const
 
 bool DirectoryContentsList::isStillLoading() const
 {
-    return fileFindHandle != nullptr;
+    return isSearching;
 }
 
 void DirectoryContentsList::changed()
@@ -221,6 +222,7 @@ bool DirectoryContentsList::checkNextFile (bool& hasChanged)
         }
 
         fileFindHandle = nullptr;
+        isSearching = false;
 
         if (! wasEmpty && files.isEmpty())
             hasChanged = true;

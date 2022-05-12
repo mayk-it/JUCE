@@ -22,42 +22,27 @@
 
 namespace juce
 {
-
-#if JUCE_MAC
-
-class ScopedLowPowerModeDisabler::Pimpl
+namespace SampleRateHelpers
 {
-public:
-    Pimpl()
+
+const auto& getAllSampleRates()
+{
+    static auto sampleRates = []
     {
-        if (@available (macOS 10.9, *))
-            activity = [[NSProcessInfo processInfo] beginActivityWithOptions: NSActivityUserInitiatedAllowingIdleSystemSleep
-                                                                      reason: @"App must remain in high-power mode"];
-    }
+        std::vector<double> result;
+        constexpr double baseRates[] = { 8000.0, 11025.0, 12000.0 };
+        constexpr double maxRate = 768000.0;
 
-    ~Pimpl()
-    {
-        if (@available (macOS 10.9, *))
-            [[NSProcessInfo processInfo] endActivity: activity];
-    }
+        for (auto rate : baseRates)
+            for (; rate <= maxRate; rate *= 2)
+                result.insert (std::upper_bound (result.begin(), result.end(), rate),
+                               rate);
 
-private:
-    id activity;
+        return result;
+    }();
 
-    JUCE_DECLARE_NON_COPYABLE (Pimpl)
-    JUCE_DECLARE_NON_MOVEABLE (Pimpl)
-};
+    return sampleRates;
+}
 
-#else
-
-class ScopedLowPowerModeDisabler::Pimpl {};
-
-#endif
-
-//==============================================================================
-ScopedLowPowerModeDisabler::ScopedLowPowerModeDisabler()
-    : pimpl (std::make_unique<Pimpl>()) {}
-
-ScopedLowPowerModeDisabler::~ScopedLowPowerModeDisabler() = default;
-
+} // namespace SampleRateHelpers
 } // namespace juce

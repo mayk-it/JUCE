@@ -208,7 +208,7 @@ private:
     OwnedArray<FileInfo> files;
 
     std::unique_ptr<RangedDirectoryIterator> fileFindHandle;
-    std::atomic<bool> shouldStop { true };
+    std::atomic<bool> shouldStop { true }, isSearching { false };
 
     bool wasEmpty = true;
 

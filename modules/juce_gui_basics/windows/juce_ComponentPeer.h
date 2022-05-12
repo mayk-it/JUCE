@@ -70,8 +70,7 @@ public:
                                                         performAnyPendingRepaintsNow() method is called. */
         windowIgnoresKeyPresses     = (1 << 10),   /**< Tells the window not to catch any keypresses. This can
                                                         be used for things like plugin windows, to stop them interfering
-                                                        with the host's shortcut keys. This will prevent the window from
-                                                        gaining keyboard focus. */
+                                                        with the host's shortcut keys. */
         windowIsSemiTransparent     = (1 << 30)    /**< Not intended for public use - makes a window transparent. */
 
     };
@@ -360,7 +359,16 @@ public:
     */
     virtual void textInputRequired (Point<int> position, TextInputTarget&) = 0;
 
-    /** If there's some kind of OS input-method in progress, this should dismiss it. */
+    /** If there's a currently active input-method context - i.e. characters are being
+        composed using multiple keystrokes - this should commit the current state of the
+        context to the text and clear the context.
+    */
+    virtual void closeInputMethodContext();
+
+    /** If there's some kind of OS input-method in progress, this should dismiss it.
+
+        Overrides of this function should call closeInputMethodContext().
+    */
     virtual void dismissPendingTextInput();
 
     /** Returns the currently focused TextInputTarget, or null if none is found. */

@@ -216,13 +216,40 @@ namespace AudioUnitFormatHelpers
                 if (manuString != nullptr && CFGetTypeID (manuString) == CFStringGetTypeID())
                     manufacturer = String::fromCFString ((CFStringRef) manuString);
 
-                const ResFileRefNum resFileId = CFBundleOpenBundleResourceMap (bundleRef.get());
-                UseResFile (resFileId);
+                class ScopedBundleResourceMap final
+                {
+                public:
+                    explicit ScopedBundleResourceMap (CFBundleRef refIn) : ref (refIn),
+                                                                           resFileId (CFBundleOpenBundleResourceMap (ref)),
+                                                                           valid (resFileId != -1)
+                    {
+                        if (valid)
+                            UseResFile (resFileId);
+                    }
+
+                    ~ScopedBundleResourceMap()
+                    {
+                        if (valid)
+                            CFBundleCloseBundleResourceMap (ref, resFileId);
+                    }
+
+                    bool isValid() const noexcept
+                    {
+                        return valid;
+                    }
+
+                private:
+                    const CFBundleRef ref;
+                    const ResFileRefNum resFileId;
+                    const bool valid;
+                };
+
+                const ScopedBundleResourceMap resourceMap { bundleRef.get() };
 
                 const OSType thngType = stringToOSType ("thng");
                 auto numResources = Count1Resources (thngType);
 
-                if (numResources > 0)
+                if (resourceMap.isValid() && numResources > 0)
                 {
                     for (ResourceIndex i = 1; i <= numResources; ++i)
                     {
@@ -260,7 +287,7 @@ namespace AudioUnitFormatHelpers
                     NSBundle* bundle = [[NSBundle alloc] initWithPath: (NSString*) fileOrIdentifier.toCFString()];
 
                     NSArray* audioComponents = [bundle objectForInfoDictionaryKey: @"AudioComponents"];
-                    NSDictionary* dict = audioComponents[0];
+                    NSDictionary* dict = [audioComponents objectAtIndex: 0];
 
                     desc.componentManufacturer = stringToOSType (nsStringToJuce ((NSString*) [dict valueForKey: @"manufacturer"]));
                     desc.componentType         = stringToOSType (nsStringToJuce ((NSString*) [dict valueForKey: @"type"]));
@@ -268,8 +295,6 @@ namespace AudioUnitFormatHelpers
 
                     [bundle release];
                 }
-
-                CFBundleCloseBundleResourceMap (bundleRef.get(), resFileId);
             }
         }
 
@@ -411,6 +436,14 @@ namespace AudioUnitFormatHelpers
         */
         std::vector<size_t> channels;
     };
+
+    static bool isPluginAUv3 (const AudioComponentDescription& desc)
+    {
+        if (@available (macOS 10.11, *))
+            return (desc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) != 0;
+
+        return false;
+    }
 }
 
 //==============================================================================
@@ -631,7 +664,7 @@ public:
 
         AudioComponentGetDescription (auComponent, &componentDesc);
 
-        isAUv3 = ((componentDesc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) != 0);
+        isAUv3 = AudioUnitFormatHelpers::isPluginAUv3 (componentDesc);
 
         wantsMidiMessages = componentDesc.componentType == kAudioUnitType_MusicDevice
                          || componentDesc.componentType == kAudioUnitType_MusicEffect
@@ -823,7 +856,7 @@ public:
                 layoutHasChanged = true;
 
                 err = AudioUnitSetProperty (audioUnit, kAudioUnitProperty_ElementCount, scope, 0, &newCount, sizeof (newCount));
-                jassert (err == noErr);
+                jassertquiet (err == noErr);
             }
 
             for (int i = 0; i < n; ++i)
@@ -2552,7 +2585,10 @@ private:
     {
         const auto viewSize = [&controller]
         {
-            auto size = [controller preferredContentSize];
+            auto size = CGSizeZero;
+
+            if (@available (macOS 10.11, *))
+                size = [controller preferredContentSize];
 
             if (size.width == 0 || size.height == 0)
                 size = controller.view.frame.size;
@@ -2861,12 +2897,15 @@ void AudioUnitPluginFormat::createPluginInstance (const PluginDescription& desc,
 
         auto callbackBlock = new AUAsyncInitializationCallback (rate, blockSize, std::move (callback));
 
-        if ((componentDesc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) != 0)
+        if (AudioUnitFormatHelpers::isPluginAUv3 (componentDesc))
         {
-            AudioComponentInstantiate (auComponent, kAudioComponentInstantiation_LoadOutOfProcess,
-                                       callbackBlock->getBlock());
+            if (@available (macOS 10.11, *))
+            {
+                AudioComponentInstantiate (auComponent, kAudioComponentInstantiation_LoadOutOfProcess,
+                                           callbackBlock->getBlock());
 
-            return;
+                return;
+            }
         }
 
         AudioComponentInstance audioUnit;
@@ -2890,8 +2929,10 @@ bool AudioUnitPluginFormat::requiresUnblockedMessageThreadDuringCreation (const 
                                                                 pluginName, version, manufacturer))
     {
         if (AudioComponent auComp = AudioComponentFindNext (nullptr, &componentDesc))
+        {
             if (AudioComponentGetDescription (auComp, &componentDesc) == noErr)
-                return ((componentDesc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) != 0);
+                return AudioUnitFormatHelpers::isPluginAUv3 (componentDesc);
+        }
     }
 
     return false;
@@ -2923,11 +2964,7 @@ StringArray AudioUnitPluginFormat::searchPathsForPlugins (const FileSearchPath&,
              || desc.componentType == kAudioUnitType_Mixer
              || desc.componentType == kAudioUnitType_MIDIProcessor)
         {
-            ignoreUnused (allowPluginsWhichRequireAsynchronousInstantiation);
-
-            const auto isAUv3 = ((desc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) != 0);
-
-            if (allowPluginsWhichRequireAsynchronousInstantiation || ! isAUv3)
+            if (allowPluginsWhichRequireAsynchronousInstantiation || ! AudioUnitFormatHelpers::isPluginAUv3 (desc))
                 result.add (AudioUnitFormatHelpers::createPluginIdentifier (desc));
         }
     }
