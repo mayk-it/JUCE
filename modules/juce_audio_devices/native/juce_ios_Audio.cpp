@@ -31,6 +31,8 @@ constexpr const char* const iOSAudioDeviceName = "iOS Audio";
  #define JUCE_IOS_AUDIO_EXPLICIT_SAMPLERATES
 #endif
 
+#define VPIO_ENABLED 1
+
 constexpr std::initializer_list<double> iOSExplicitSampleRates { JUCE_IOS_AUDIO_EXPLICIT_SAMPLERATES };
 
 //==============================================================================
@@ -973,13 +975,23 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
 
         AudioComponentDescription desc;
         desc.componentType = kAudioUnitType_Output;
+        #if VPIO_ENABLED
         desc.componentSubType = isUsingBuiltInSpeaker() ? kAudioUnitSubType_VoiceProcessingIO : kAudioUnitSubType_RemoteIO;
+        #else
+        desc.componentSubType = kAudioUnitSubType_RemoteIO;
+        #endif
         desc.componentManufacturer = kAudioUnitManufacturer_Apple;
         desc.componentFlags = 0;
         desc.componentFlagsMask = 0;
                 
         setAnalogInputGain(0.5f);
         
+        #if VPIO_ENABLED
+        setAudioPreprocessingEnabled(true);
+        #else
+        setAudioPreprocessingEnabled(false);
+        #endif
+
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
         AudioComponentInstanceNew (comp, &audioUnit);
 
