@@ -555,8 +555,13 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
     {
         auto session = [AVAudioSession sharedInstance];
 
+        #if VPIO_ENABLED
         NSString* mode = (enable ? AVAudioSessionModeDefault
                                  : AVAudioSessionModeMeasurement);
+        #else
+        NSString* mode = (enable ? AVAudioSessionModeVideoRecording
+                                 : AVAudioSessionModeMeasurement);
+        #endif
 
         JUCE_NSERROR_CHECK ([session setMode: mode
                                        error: &error]);
@@ -574,6 +579,29 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         }
 
         return session.inputGain == gain;
+    }
+    
+    void selectBackMic ()
+    {
+        auto session = [AVAudioSession sharedInstance];
+
+        NSArray *portDescriptions = session.availableInputs;
+        AVAudioSessionPortDescription* builtInMicPort = nil;
+
+        for (AVAudioSessionPortDescription* port in portDescriptions) {
+            if ([port.portType isEqualToString:AVAudioSessionPortBuiltInMic]) {
+                builtInMicPort = port;
+                break;
+            }
+        }
+
+        if (builtInMicPort) {
+            for (AVAudioSessionDataSourceDescription* source in builtInMicPort.dataSources) {
+                if ([source.orientation isEqual:AVAudioSessionOrientationBack]) {
+                    break;
+                }
+            }
+        }
     }
 
     //==============================================================================
@@ -985,11 +1013,10 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         desc.componentFlagsMask = 0;
                 
         setAnalogInputGain(0.5f);
-        
-        #if VPIO_ENABLED
         setAudioPreprocessingEnabled(true);
-        #else
-        setAudioPreprocessingEnabled(false);
+        
+        #if !VPIO_ENABLED
+        selectBackMic();
         #endif
 
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
