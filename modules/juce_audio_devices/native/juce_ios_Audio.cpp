@@ -601,6 +601,12 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
                     break;
                 }
             }
+            
+            for (AVAudioSessionDataSourceDescription* source in builtInMicPort.dataSources) {
+                if ([source.preferredPolarPattern isEqual:AVAudioSessionPolarPatternCardioid]) {
+                    break;
+                }
+            }
         }
     }
 
