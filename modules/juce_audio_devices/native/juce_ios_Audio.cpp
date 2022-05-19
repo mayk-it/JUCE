@@ -973,7 +973,9 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
 
         AudioComponentDescription desc;
         desc.componentType = kAudioUnitType_Output;
-        desc.componentSubType = isUsingBuiltInSpeaker() ? kAudioUnitSubType_VoiceProcessingIO : kAudioUnitSubType_RemoteIO;
+        desc.componentSubType = isUsingBuiltInSpeaker() && AudioIODeviceType::useDeviceVoiceProcessing
+                                    ? kAudioUnitSubType_VoiceProcessingIO
+                                    : kAudioUnitSubType_RemoteIO;
         desc.componentManufacturer = kAudioUnitManufacturer_Apple;
         desc.componentFlags = 0;
         desc.componentFlagsMask = 0;

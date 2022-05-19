@@ -23,6 +23,8 @@
 namespace juce
 {
 
+bool AudioIODeviceType::useDeviceVoiceProcessing = true;
+
 AudioIODeviceType::AudioIODeviceType (const String& name)
     : typeName (name)
 {
