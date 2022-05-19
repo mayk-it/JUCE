@@ -31,7 +31,7 @@ constexpr const char* const iOSAudioDeviceName = "iOS Audio";
  #define JUCE_IOS_AUDIO_EXPLICIT_SAMPLERATES
 #endif
 
-#define VPIO_ENABLED 1
+#define VPIO_ENABLED 0
 
 constexpr std::initializer_list<double> iOSExplicitSampleRates { JUCE_IOS_AUDIO_EXPLICIT_SAMPLERATES };
 
