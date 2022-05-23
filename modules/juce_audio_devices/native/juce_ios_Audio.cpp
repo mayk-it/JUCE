@@ -552,9 +552,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
     bool setAudioPreprocessingEnabled (bool enable)
     {
         auto session = [AVAudioSession sharedInstance];
-        
-        AudioIODeviceType::useDeviceVoiceProcessing
-        
+                
         NSString* mode = (enable ? (AudioIODeviceType::useDeviceVoiceProcessing ? AVAudioSessionModeDefault : AVAudioSessionModeVideoRecording) : AVAudioSessionModeMeasurement);
 
         JUCE_NSERROR_CHECK ([session setMode: mode
