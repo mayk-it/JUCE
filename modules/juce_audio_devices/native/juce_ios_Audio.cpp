@@ -31,8 +31,6 @@ constexpr const char* const iOSAudioDeviceName = "iOS Audio";
  #define JUCE_IOS_AUDIO_EXPLICIT_SAMPLERATES
 #endif
 
-#define VPIO_ENABLED 0
-
 constexpr std::initializer_list<double> iOSExplicitSampleRates { JUCE_IOS_AUDIO_EXPLICIT_SAMPLERATES };
 
 //==============================================================================
@@ -554,14 +552,10 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
     bool setAudioPreprocessingEnabled (bool enable)
     {
         auto session = [AVAudioSession sharedInstance];
-
-        #if VPIO_ENABLED
-        NSString* mode = (enable ? AVAudioSessionModeDefault
-                                 : AVAudioSessionModeMeasurement);
-        #else
-        NSString* mode = (enable ? AVAudioSessionModeVideoRecording
-                                 : AVAudioSessionModeMeasurement);
-        #endif
+        
+        AudioIODeviceType::useDeviceVoiceProcessing
+        
+        NSString* mode = (enable ? (AudioIODeviceType::useDeviceVoiceProcessing ? AVAudioSessionModeDefault : AVAudioSessionModeVideoRecording) : AVAudioSessionModeMeasurement);
 
         JUCE_NSERROR_CHECK ([session setMode: mode
                                        error: &error]);
@@ -1009,11 +1003,9 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
 
         AudioComponentDescription desc;
         desc.componentType = kAudioUnitType_Output;
-        #if VPIO_ENABLED
-        desc.componentSubType = isUsingBuiltInSpeaker() ? kAudioUnitSubType_VoiceProcessingIO : kAudioUnitSubType_RemoteIO;
-        #else
-        desc.componentSubType = kAudioUnitSubType_RemoteIO;
-        #endif
+        desc.componentSubType = isUsingBuiltInSpeaker() && AudioIODeviceType::useDeviceVoiceProcessing
+                                    ? kAudioUnitSubType_VoiceProcessingIO
+                                    : kAudioUnitSubType_RemoteIO;
         desc.componentManufacturer = kAudioUnitManufacturer_Apple;
         desc.componentFlags = 0;
         desc.componentFlagsMask = 0;
@@ -1021,9 +1013,8 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         setAnalogInputGain(0.5f);
         setAudioPreprocessingEnabled(true);
         
-        #if !VPIO_ENABLED
-        selectBackMic();
-        #endif
+        if (!AudioIODeviceType::useDeviceVoiceProcessing)
+            selectBackMic();
 
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
         AudioComponentInstanceNew (comp, &audioUnit);
