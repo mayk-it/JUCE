@@ -553,7 +553,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
     {
         auto session = [AVAudioSession sharedInstance];
                 
-        NSString* mode = (enable ? (AudioIODeviceType::useDeviceVoiceProcessing ? AVAudioSessionModeDefault : AVAudioSessionModeVideoRecording) : AVAudioSessionModeMeasurement);
+        NSString* mode = (enable ? AVAudioSessionModeVideoRecording : AVAudioSessionModeMeasurement);
 
         JUCE_NSERROR_CHECK ([session setMode: mode
                                        error: &error]);
@@ -1009,10 +1009,11 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         desc.componentFlagsMask = 0;
                 
         setAnalogInputGain(0.5f);
-        setAudioPreprocessingEnabled(true);
         
-        if (!AudioIODeviceType::useDeviceVoiceProcessing)
+        if (!AudioIODeviceType::useDeviceVoiceProcessing) {
+            setAudioPreprocessingEnabled(true);
             selectBackMic();
+        }
 
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
         AudioComponentInstanceNew (comp, &audioUnit);
