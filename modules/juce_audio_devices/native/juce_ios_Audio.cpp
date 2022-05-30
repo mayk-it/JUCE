@@ -593,7 +593,24 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
                     break;
                 }
             }
-            
+        }
+    }
+    
+    void selectCardiodPolarPattern ()
+    {
+        auto session = [AVAudioSession sharedInstance];
+
+        NSArray *portDescriptions = session.availableInputs;
+        AVAudioSessionPortDescription* builtInMicPort = nil;
+
+        for (AVAudioSessionPortDescription* port in portDescriptions) {
+            if ([port.portType isEqualToString:AVAudioSessionPortBuiltInMic]) {
+                builtInMicPort = port;
+                break;
+            }
+        }
+
+        if (builtInMicPort) {
             for (AVAudioSessionDataSourceDescription* source in builtInMicPort.dataSources) {
                 if ([source.preferredPolarPattern isEqual:AVAudioSessionPolarPatternCardioid]) {
                     break;
@@ -1013,6 +1030,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         if (!AudioIODeviceType::useDeviceVoiceProcessing) {
             setAudioPreprocessingEnabled(true);
             selectBackMic();
+            selectCardiodPolarPattern();
         }
 
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
