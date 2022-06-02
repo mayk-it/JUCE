@@ -1044,7 +1044,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing) {
             setAudioPreprocessingEnabled(true);
             selectBackMic();
-            //selectCardioidPolarPattern(); TODO(Cris): This function is not working in iPhone 6s, ignore for now
+            selectCardiodPolarPattern();
         }
 
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
