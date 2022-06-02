@@ -1041,7 +1041,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
                 
         setAnalogInputGain(0.5f);
         
-        if (!AudioIODeviceType::useDeviceVoiceProcessing) {
+        if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing) {
             setAudioPreprocessingEnabled(true);
             selectBackMic();
             selectCardiodPolarPattern();
