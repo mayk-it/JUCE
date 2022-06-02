@@ -579,6 +579,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
 
         NSArray *portDescriptions = session.availableInputs;
         AVAudioSessionPortDescription* builtInMicPort = nil;
+        AVAudioSessionDataSourceDescription* backDataSource = nil;
 
         for (AVAudioSessionPortDescription* port in portDescriptions) {
             if ([port.portType isEqualToString:AVAudioSessionPortBuiltInMic]) {
@@ -590,18 +591,25 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         if (builtInMicPort) {
             for (AVAudioSessionDataSourceDescription* source in builtInMicPort.dataSources) {
                 if ([source.orientation isEqual:AVAudioSessionOrientationBack]) {
+                    backDataSource = source;
                     break;
                 }
             }
         }
+        
+        if (backDataSource) {
+            JUCE_NSERROR_CHECK ([builtInMicPort setPreferredDataSource: backDataSource
+                                           error: &error]);
+        }
     }
     
-    void selectCardiodPolarPattern ()
+    void selectCardioidPolarPattern ()
     {
         auto session = [AVAudioSession sharedInstance];
 
         NSArray *portDescriptions = session.availableInputs;
         AVAudioSessionPortDescription* builtInMicPort = nil;
+        AVAudioSessionDataSourceDescription* backDataSource = nil;
 
         for (AVAudioSessionPortDescription* port in portDescriptions) {
             if ([port.portType isEqualToString:AVAudioSessionPortBuiltInMic]) {
@@ -609,13 +617,19 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
                 break;
             }
         }
-
+        
         if (builtInMicPort) {
             for (AVAudioSessionDataSourceDescription* source in builtInMicPort.dataSources) {
-                if ([source.preferredPolarPattern isEqual:AVAudioSessionPolarPatternCardioid]) {
+                if ([source.orientation isEqual:AVAudioSessionOrientationBack]) {
+                    backDataSource = source;
                     break;
                 }
             }
+        }
+        
+        if (backDataSource) {
+            JUCE_NSERROR_CHECK ([backDataSource setPreferredPolarPattern: AVAudioSessionPolarPatternCardioid
+                                           error: &error]);
         }
     }
 
