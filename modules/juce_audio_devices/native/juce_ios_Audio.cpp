@@ -552,9 +552,8 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
     bool setAudioPreprocessingEnabled (bool enable)
     {
         auto session = [AVAudioSession sharedInstance];
-
-        NSString* mode = (enable ? AVAudioSessionModeDefault
-                                 : AVAudioSessionModeMeasurement);
+                
+        NSString* mode = (enable ? AVAudioSessionModeVideoRecording : AVAudioSessionModeMeasurement);
 
         JUCE_NSERROR_CHECK ([session setMode: mode
                                        error: &error]);
@@ -572,6 +571,66 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         }
 
         return session.inputGain == gain;
+    }
+    
+    void selectBackMic ()
+    {
+        auto session = [AVAudioSession sharedInstance];
+
+        NSArray *portDescriptions = session.availableInputs;
+        AVAudioSessionPortDescription* builtInMicPort = nil;
+        AVAudioSessionDataSourceDescription* backDataSource = nil;
+
+        for (AVAudioSessionPortDescription* port in portDescriptions) {
+            if ([port.portType isEqualToString:AVAudioSessionPortBuiltInMic]) {
+                builtInMicPort = port;
+                break;
+            }
+        }
+
+        if (builtInMicPort) {
+            for (AVAudioSessionDataSourceDescription* source in builtInMicPort.dataSources) {
+                if ([source.orientation isEqual:AVAudioSessionOrientationBack]) {
+                    backDataSource = source;
+                    break;
+                }
+            }
+        }
+        
+        if (backDataSource) {
+            JUCE_NSERROR_CHECK ([builtInMicPort setPreferredDataSource: backDataSource
+                                           error: &error]);
+        }
+    }
+    
+    void selectCardioidPolarPattern ()
+    {
+        auto session = [AVAudioSession sharedInstance];
+
+        NSArray *portDescriptions = session.availableInputs;
+        AVAudioSessionPortDescription* builtInMicPort = nil;
+        AVAudioSessionDataSourceDescription* backDataSource = nil;
+
+        for (AVAudioSessionPortDescription* port in portDescriptions) {
+            if ([port.portType isEqualToString:AVAudioSessionPortBuiltInMic]) {
+                builtInMicPort = port;
+                break;
+            }
+        }
+        
+        if (builtInMicPort) {
+            for (AVAudioSessionDataSourceDescription* source in builtInMicPort.dataSources) {
+                if ([source.orientation isEqual:AVAudioSessionOrientationBack]) {
+                    backDataSource = source;
+                    break;
+                }
+            }
+        }
+        
+        if (backDataSource) {
+            JUCE_NSERROR_CHECK ([backDataSource setPreferredPolarPattern: AVAudioSessionPolarPatternCardioid
+                                           error: &error]);
+        }
     }
 
     //==============================================================================
@@ -982,6 +1041,12 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
                 
         setAnalogInputGain(0.5f);
         
+        if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing) {
+            setAudioPreprocessingEnabled(true);
+            selectBackMic();
+            selectCardioidPolarPattern();
+        }
+
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
         AudioComponentInstanceNew (comp, &audioUnit);
 
