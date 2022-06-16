@@ -1256,7 +1256,7 @@ public:
             case 23:  return "hearing aid";
             case 24:  return "built-in speaker safe";
             case 25:  return {};
-            default:  jassertfalse; return {}; // type not supported yet, needs to be added!
+            default:  return {}; // type not supported yet, needs to be added!
         }
     }
 
