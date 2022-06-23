@@ -602,36 +602,6 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
                                            error: &error]);
         }
     }
-    
-    void selectCardioidPolarPattern ()
-    {
-        auto session = [AVAudioSession sharedInstance];
-
-        NSArray *portDescriptions = session.availableInputs;
-        AVAudioSessionPortDescription* builtInMicPort = nil;
-        AVAudioSessionDataSourceDescription* backDataSource = nil;
-
-        for (AVAudioSessionPortDescription* port in portDescriptions) {
-            if ([port.portType isEqualToString:AVAudioSessionPortBuiltInMic]) {
-                builtInMicPort = port;
-                break;
-            }
-        }
-        
-        if (builtInMicPort) {
-            for (AVAudioSessionDataSourceDescription* source in builtInMicPort.dataSources) {
-                if ([source.orientation isEqual:AVAudioSessionOrientationBack]) {
-                    backDataSource = source;
-                    break;
-                }
-            }
-        }
-        
-        if (backDataSource) {
-            JUCE_NSERROR_CHECK ([backDataSource setPreferredPolarPattern: AVAudioSessionPolarPatternCardioid
-                                           error: &error]);
-        }
-    }
 
     //==============================================================================
     bool canControlTransport() override                    { return interAppAudioConnected; }
@@ -1044,7 +1014,6 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing) {
             setAudioPreprocessingEnabled(true);
             selectBackMic();
-            selectCardioidPolarPattern();
         }
 
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
