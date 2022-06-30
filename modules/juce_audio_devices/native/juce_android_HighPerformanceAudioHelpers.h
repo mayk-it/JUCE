@@ -62,6 +62,13 @@ namespace AndroidHighPerformanceAudioHelpers
         return androidHasSystemFeature ("android.hardware.audio.low_latency");
     }
 
+    static int getNumBuffersToEnqueue (int preferredBufferSize, int sampleRate)
+    {
+      if (canUseHighPerformanceAudioPath (preferredBufferSize, sampleRate))
+        return preferredBufferSize / getNativeBufferSize();
+
+      return 1;
+    }
     static bool canUseHighPerformanceAudioPath (int nativeBufferSize, int requestedBufferSize, int requestedSampleRate)
     {
         return ((requestedBufferSize % nativeBufferSize) == 0)
