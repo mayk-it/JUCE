@@ -199,11 +199,8 @@ public:
 
         sampleRate = (int) (requestedSampleRate > 0 ? requestedSampleRate : AndroidHighPerformanceAudioHelpers::getNativeSampleRate());
         auto preferredBufferSize = (bufferSize > 0) ? bufferSize : getDefaultBufferSize();
+        actualBufferSize = preferredBufferSize;
 
-        audioBuffersToEnqueue = AndroidHighPerformanceAudioHelpers::getNumBuffersToEnqueue (preferredBufferSize, sampleRate);
-        actualBufferSize = preferredBufferSize / audioBuffersToEnqueue;
-
-        jassert ((actualBufferSize * audioBuffersToEnqueue) == preferredBufferSize);
 
         // The device may report no max, claiming "no limits". Pick sensible defaults.
         int maxOutChans = maxNumOutputChannels > 0 ? maxNumOutputChannels : 2;
@@ -250,7 +247,7 @@ public:
     int getOutputLatencyInSamples() override            { return session->getOutputLatencyInSamples(); }
     int getInputLatencyInSamples() override             { return session->getInputLatencyInSamples(); }
     bool isOpen() override                              { return deviceOpen; }
-    int getCurrentBufferSizeSamples() override          { return actualBufferSize * audioBuffersToEnqueue; }
+    int getCurrentBufferSizeSamples() override          { return actualBufferSize; }
     int getCurrentBitDepth() override                   { return session->getCurrentBitDepth(); }
     BigInteger getActiveOutputChannels() const override { return activeOutputChans; }
     BigInteger getActiveInputChannels() const override  { return activeInputChans; }
@@ -993,7 +990,7 @@ private:
     friend class OboeRealtimeThread;
 
     //==============================================================================
-    int actualBufferSize = 0, sampleRate = 0, audioBuffersToEnqueue = 0;
+    int actualBufferSize = 0, sampleRate = 0;
     bool deviceOpen = false;
     String lastError;
     BigInteger activeOutputChans, activeInputChans;

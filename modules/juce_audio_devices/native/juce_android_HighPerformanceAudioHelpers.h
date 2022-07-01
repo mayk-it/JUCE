@@ -62,13 +62,13 @@ namespace AndroidHighPerformanceAudioHelpers
         return androidHasSystemFeature ("android.hardware.audio.low_latency");
     }
 
-    static int getNumBuffersToEnqueue (int preferredBufferSize, int sampleRate)
-    {
-      if (canUseHighPerformanceAudioPath (preferredBufferSize, sampleRate))
-        return preferredBufferSize / getNativeBufferSize();
-
-      return 1;
-    }
+ //   static int getNumBuffersToEnqueue (int preferredBufferSize, int sampleRate)
+ //   {
+ //     if (canUseHighPerformanceAudioPath (preferredBufferSize, sampleRate))
+ //       return preferredBufferSize / getNativeBufferSize();
+ //
+ //     return 1;
+ //   }
     static bool canUseHighPerformanceAudioPath (int nativeBufferSize, int requestedBufferSize, int requestedSampleRate)
     {
         return ((requestedBufferSize % nativeBufferSize) == 0)
@@ -130,7 +130,7 @@ namespace AndroidHighPerformanceAudioHelpers
         auto defaultBufferLength = (hasLowLatencyAudioPath() ? defaultBufferSizeForLowLatencyDeviceMs
                                                              : defaultBufferSizeForStandardLatencyDeviceMs);
 
-        auto defaultBuffersToEnqueue = buffersToQueueForBufferDuration (nativeBufferSize, defaultBufferLength, currentSampleRate);
+        auto defaultBuffersToEnqueue = 1; // buffersToQueueForBufferDuration (nativeBufferSize, defaultBufferLength, currentSampleRate);
         return defaultBuffersToEnqueue * nativeBufferSize;
     }
 }
