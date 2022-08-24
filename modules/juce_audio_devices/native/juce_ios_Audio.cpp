@@ -573,7 +573,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         return session.inputGain == gain;
     }
     
-    void selectBackMic ()
+    void selectBackOrFrontMic (bool backMic)
     {
         auto session = [AVAudioSession sharedInstance];
 
@@ -590,7 +590,11 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
 
         if (builtInMicPort) {
             for (AVAudioSessionDataSourceDescription* source in builtInMicPort.dataSources) {
-                if ([source.orientation isEqual:AVAudioSessionOrientationBack]) {
+                if (backMic && [source.orientation isEqual:AVAudioSessionOrientationBack]) {
+                    backDataSource = source;
+                    break;
+                }
+                if (!backMic && [source.orientation isEqual:AVAudioSessionOrientationFront]) {
                     backDataSource = source;
                     break;
                 }
@@ -1013,7 +1017,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         
         if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing) {
             setAudioPreprocessingEnabled(true);
-            selectBackMic();
+            selectBackOrFrontMic(false);
         }
 
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
