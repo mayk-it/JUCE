@@ -573,7 +573,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         return session.inputGain == gain;
     }
     
-    void selectBackOrFrontMic (bool backMic)
+    void selectMicPosition (int micPosition)
     {
         auto session = [AVAudioSession sharedInstance];
 
@@ -590,11 +590,11 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
 
         if (builtInMicPort) {
             for (AVAudioSessionDataSourceDescription* source in builtInMicPort.dataSources) {
-                if (backMic && [source.orientation isEqual:AVAudioSessionOrientationBack]) {
+                if (micPosition == MicPosition::Back && [source.orientation isEqual:AVAudioSessionOrientationBack]) {
                     backDataSource = source;
                     break;
                 }
-                if (!backMic && [source.orientation isEqual:AVAudioSessionOrientationFront]) {
+                if (micPosition == MicPosition::Front && [source.orientation isEqual:AVAudioSessionOrientationFront]) {
                     backDataSource = source;
                     break;
                 }
@@ -1017,7 +1017,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         
         if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing) {
             setAudioPreprocessingEnabled(true);
-            selectBackOrFrontMic(false);
+            selectMicPosition(MicPosition::Front);
         }
 
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
@@ -1438,6 +1438,11 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
     Float64 lastSampleTime;
     unsigned int lastNumFrames;
     int xrun;
+    
+    enum MicPosition {
+      Back,
+      Front
+    };
 
     JUCE_DECLARE_NON_COPYABLE (Pimpl)
 };
