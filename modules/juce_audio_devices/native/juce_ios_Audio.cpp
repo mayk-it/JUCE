@@ -562,6 +562,52 @@ struct iOSAudioIODevice::Pimpl      : public AsyncUpdater
         return session.mode == mode;
     }
 
+    bool setAnalogInputGain (float gain)
+    {
+        auto session = [AVAudioSession sharedInstance];
+
+        if (session.isInputGainSettable) {
+            JUCE_NSERROR_CHECK ([session setInputGain: gain
+                                           error: &error]);
+        }
+
+        return session.inputGain == gain;
+    }
+
+    void selectMicPosition (int micPosition)
+    {
+        auto session = [AVAudioSession sharedInstance];
+
+        NSArray *portDescriptions = session.availableInputs;
+        AVAudioSessionPortDescription* builtInMicPort = nil;
+        AVAudioSessionDataSourceDescription* backDataSource = nil;
+
+        for (AVAudioSessionPortDescription* port in portDescriptions) {
+            if ([port.portType isEqualToString:AVAudioSessionPortBuiltInMic]) {
+                builtInMicPort = port;
+                break;
+            }
+        }
+
+        if (builtInMicPort) {
+            for (AVAudioSessionDataSourceDescription* source in builtInMicPort.dataSources) {
+                if (micPosition == MicPosition::Back && [source.orientation isEqual:AVAudioSessionOrientationBack]) {
+                    backDataSource = source;
+                    break;
+                }
+                if (micPosition == MicPosition::Front && [source.orientation isEqual:AVAudioSessionOrientationFront]) {
+                    backDataSource = source;
+                    break;
+                }
+            }
+        }
+
+        if (backDataSource) {
+            JUCE_NSERROR_CHECK ([builtInMicPort setPreferredDataSource: backDataSource
+                                           error: &error]);
+        }
+    }
+
     //==============================================================================
     class PlayHead : public AudioPlayHead
     {
