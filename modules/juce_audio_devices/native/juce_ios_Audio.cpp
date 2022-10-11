@@ -951,6 +951,9 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
             for (int c = 0; c < channelData.outputs->numActiveChannels; ++c)
             {
                 auto channelIndex = channelData.outputs->activeChannelIndices[c];
+                for (int i = 0; i < bufferSize; i++)
+                    outputData[c][i] *= gainCompensation;
+                
                 memcpy (data->mBuffers[channelIndex].mData, outputData[c], channelDataSize);
             }
 
@@ -1015,8 +1018,10 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
                
         setAudioPreprocessingEnabled(false);
         setAnalogInputGain(0.5f);
+        gainCompensation = 1.f;
         
         if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing) {
+            gainCompensation = Decibels::decibelsToGain(19.5f);
             setAnalogInputGain(1.f);
             setAudioPreprocessingEnabled(false);
             selectMicPosition(MicPosition::Front);
@@ -1445,6 +1450,8 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
       Back,
       Front
     };
+    
+    float gainCompensation;
 
     JUCE_DECLARE_NON_COPYABLE (Pimpl)
 };
