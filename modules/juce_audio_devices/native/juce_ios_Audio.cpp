@@ -1021,7 +1021,6 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing) {
             gainCompensation = Decibels::decibelsToGain(19.5f);
             setAnalogInputGain(1.f);
-            setAudioPreprocessingEnabled(false);
             selectMicPosition(MicPosition::Front);
         }
 
