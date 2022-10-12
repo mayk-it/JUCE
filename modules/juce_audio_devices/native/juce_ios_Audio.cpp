@@ -290,8 +290,7 @@ struct iOSAudioIODevice::Pimpl      : public AsyncUpdater
 
         if (category == AVAudioSessionCategoryPlayAndRecord)
         {
-            options |= (AVAudioSessionCategoryOptionDefaultToSpeaker
-                      | AVAudioSessionCategoryOptionAllowBluetooth);
+            options |= AVAudioSessionCategoryOptionDefaultToSpeaker;
 
             if (@available (iOS 10.0, *))
                 options |= AVAudioSessionCategoryOptionAllowBluetoothA2DP;
