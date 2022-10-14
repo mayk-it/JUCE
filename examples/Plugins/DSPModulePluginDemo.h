@@ -2,7 +2,7 @@
   ==============================================================================
 
    This file is part of the JUCE examples.
-   Copyright (c) 2020 - Raw Material Software Limited
+   Copyright (c) 2022 - Raw Material Software Limited
 
    The code included in this file is provided under the terms of the ISC license
    http://www.isc.org/downloads/software-support-policy/isc-license. Permission
@@ -33,7 +33,7 @@
                    juce_audio_plugin_client, juce_audio_processors,
                    juce_audio_utils, juce_core, juce_data_structures, juce_dsp,
                    juce_events, juce_graphics, juce_gui_basics, juce_gui_extra
- exporters:        xcode_mac, vs2019, linux_make
+ exporters:        xcode_mac, vs2022, linux_make
 
  moduleFlags:      JUCE_STRICT_REFCOUNTEDPOINTER=1
 
@@ -120,9 +120,8 @@ namespace ID
 
 template <typename Func, typename... Items>
 constexpr void forEach (Func&& func, Items&&... items)
-    noexcept (noexcept (std::initializer_list<int> { (func (std::forward<Items> (items)), 0)... }))
 {
-    (void) std::initializer_list<int> { ((void) func (std::forward<Items> (items)), 0)... };
+    (func (std::forward<Items> (items)), ...);
 }
 
 template <typename... Components>

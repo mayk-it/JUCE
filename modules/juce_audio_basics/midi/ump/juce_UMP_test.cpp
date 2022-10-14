@@ -2,7 +2,7 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2020 - Raw Material Software Limited
+   Copyright (c) 2022 - Raw Material Software Limited
 
    JUCE is an open source library subject to commercial or open-source
    licensing.
@@ -992,7 +992,7 @@ private:
 
    #if JUCE_WINDOWS && ! JUCE_MINGW
     #define JUCE_CHECKED_ITERATOR(msg, size) \
-        stdext::checked_array_iterator<typename std::remove_reference<decltype (msg)>::type> ((msg), (size_t) (size))
+        stdext::checked_array_iterator<std::remove_reference_t<decltype (msg)>> ((msg), (size_t) (size))
    #else
     #define JUCE_CHECKED_ITERATOR(msg, size) (msg)
    #endif

@@ -2,15 +2,15 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2020 - Raw Material Software Limited
+   Copyright (c) 2022 - Raw Material Software Limited
 
    JUCE is an open source library subject to commercial or open-source
    licensing.
 
-   By using JUCE, you agree to the terms of both the JUCE 6 End-User License
-   Agreement and JUCE Privacy Policy (both effective as of the 16th June 2020).
+   By using JUCE, you agree to the terms of both the JUCE 7 End-User License
+   Agreement and JUCE Privacy Policy.
 
-   End User License Agreement: www.juce.com/juce-6-licence
+   End User License Agreement: www.juce.com/juce-7-licence
    Privacy Policy: www.juce.com/juce-privacy-policy
 
    Or: You may also use this code under the terms of the GPL v3 (see
@@ -117,6 +117,10 @@ public:
                                          (gpointer, const gchar*, GCallback, gpointer, GClosureNotify, GConnectFlags), gulong)
 
     //==============================================================================
+    JUCE_GENERATE_FUNCTION_WITH_DEFAULT (gdk_set_allowed_backends, juce_gdk_set_allowed_backends,
+                                         (const char*), void)
+
+    //==============================================================================
     JUCE_DECLARE_SINGLETON_SINGLETHREADED_MINIMAL (WebKitSymbols)
 
 private:
@@ -182,18 +186,19 @@ private:
     bool loadGtkSymbols()
     {
         return loadSymbols (gtkLib,
-                            makeSymbolBinding (juce_gtk_init,                "gtk_init"),
-                            makeSymbolBinding (juce_gtk_plug_new,            "gtk_plug_new"),
-                            makeSymbolBinding (juce_gtk_scrolled_window_new, "gtk_scrolled_window_new"),
-                            makeSymbolBinding (juce_gtk_container_add,       "gtk_container_add"),
-                            makeSymbolBinding (juce_gtk_widget_show_all,     "gtk_widget_show_all"),
-                            makeSymbolBinding (juce_gtk_plug_get_id,         "gtk_plug_get_id"),
-                            makeSymbolBinding (juce_gtk_main,                "gtk_main"),
-                            makeSymbolBinding (juce_gtk_main_quit,           "gtk_main_quit"),
-                            makeSymbolBinding (juce_g_unix_fd_add,           "g_unix_fd_add"),
-                            makeSymbolBinding (juce_g_object_ref,            "g_object_ref"),
-                            makeSymbolBinding (juce_g_object_unref,          "g_object_unref"),
-                            makeSymbolBinding (juce_g_signal_connect_data,   "g_signal_connect_data"));
+                            makeSymbolBinding (juce_gtk_init,                 "gtk_init"),
+                            makeSymbolBinding (juce_gtk_plug_new,             "gtk_plug_new"),
+                            makeSymbolBinding (juce_gtk_scrolled_window_new,  "gtk_scrolled_window_new"),
+                            makeSymbolBinding (juce_gtk_container_add,        "gtk_container_add"),
+                            makeSymbolBinding (juce_gtk_widget_show_all,      "gtk_widget_show_all"),
+                            makeSymbolBinding (juce_gtk_plug_get_id,          "gtk_plug_get_id"),
+                            makeSymbolBinding (juce_gtk_main,                 "gtk_main"),
+                            makeSymbolBinding (juce_gtk_main_quit,            "gtk_main_quit"),
+                            makeSymbolBinding (juce_g_unix_fd_add,            "g_unix_fd_add"),
+                            makeSymbolBinding (juce_g_object_ref,             "g_object_ref"),
+                            makeSymbolBinding (juce_g_object_unref,           "g_object_unref"),
+                            makeSymbolBinding (juce_g_signal_connect_data,    "g_signal_connect_data"),
+                            makeSymbolBinding (juce_gdk_set_allowed_backends, "gdk_set_allowed_backends"));
     }
 
     //==============================================================================
@@ -347,6 +352,9 @@ public:
     int entry()
     {
         CommandReceiver::setBlocking (outChannel, true);
+
+        // webkit2gtk crashes when using the wayland backend embedded into an x11 window
+        WebKitSymbols::getInstance()->juce_gdk_set_allowed_backends ("x11");
 
         WebKitSymbols::getInstance()->juce_gtk_init (nullptr, nullptr);
 
@@ -781,11 +789,11 @@ private:
 
             argv[4] = nullptr;
 
-           #if JUCE_STANDALONE_APPLICATION
-            execv (arguments[0].toRawUTF8(), (char**) argv.getData());
-           #else
-            juce_gtkWebkitMain (4, (const char**) argv.getData());
-           #endif
+            if (JUCEApplicationBase::isStandaloneApp())
+                execv (arguments[0].toRawUTF8(), (char**) argv.getData());
+            else
+                juce_gtkWebkitMain (4, (const char**) argv.getData());
+
             exit (0);
         }
 

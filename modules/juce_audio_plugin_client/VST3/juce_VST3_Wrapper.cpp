@@ -2,15 +2,15 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2020 - Raw Material Software Limited
+   Copyright (c) 2022 - Raw Material Software Limited
 
    JUCE is an open source library subject to commercial or open-source
    licensing.
 
-   By using JUCE, you agree to the terms of both the JUCE 6 End-User License
-   Agreement and JUCE Privacy Policy (both effective as of the 16th June 2020).
+   By using JUCE, you agree to the terms of both the JUCE 7 End-User License
+   Agreement and JUCE Privacy Policy.
 
-   End User License Agreement: www.juce.com/juce-6-licence
+   End User License Agreement: www.juce.com/juce-7-licence
    Privacy Policy: www.juce.com/juce-privacy-policy
 
    Or: You may also use this code under the terms of the GPL v3 (see
@@ -50,6 +50,7 @@ JUCE_BEGIN_NO_SANITIZE ("vptr")
 #include "../utility/juce_WindowsHooks.h"
 #include "../utility/juce_LinuxMessageThread.h"
 #include <juce_audio_processors/format_types/juce_LegacyAudioParameter.cpp>
+#include <juce_audio_processors/utilities/juce_FlagCache.h>
 #include <juce_audio_processors/format_types/juce_VST3Common.h>
 
 #ifndef JUCE_VST3_CAN_REPLACE_VST2
@@ -77,13 +78,27 @@ JUCE_BEGIN_NO_SANITIZE ("vptr")
 #endif
 
 #if JUCE_LINUX || JUCE_BSD
+ #include "juce_events/native/juce_linux_EventLoopInternal.h"
  #include <unordered_map>
-
- std::vector<std::pair<int, std::function<void (int)>>> getFdReadCallbacks();
 #endif
 
 #if JUCE_MAC
  #include <juce_core/native/juce_mac_CFHelpers.h>
+#endif
+
+//==============================================================================
+#if JucePlugin_Enable_ARA
+ JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE("-Wpragma-pack")
+ #include <ARA_API/ARAVST3.h>
+ JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+
+ #if ARA_SUPPORT_VERSION_1
+  #error "Unsupported ARA version - only ARA version 2 and onward are supported by the current implementation"
+ #endif
+
+ DEF_CLASS_IID(ARA::IPlugInEntryPoint)
+ DEF_CLASS_IID(ARA::IPlugInEntryPoint2)
+ DEF_CLASS_IID(ARA::IMainFactory)
 #endif
 
 namespace juce
@@ -104,23 +119,58 @@ using namespace Steinberg;
 #endif
 
 #if JUCE_WINDOWS && JUCE_WIN_PER_MONITOR_DPI_AWARE
- extern JUCE_API double getScaleFactorForWindow (HWND);
+ double getScaleFactorForWindow (HWND);
 #endif
 
 //==============================================================================
 #if JUCE_LINUX || JUCE_BSD
 
-class EventHandler final  : public Steinberg::Linux::IEventHandler
+enum class HostMessageThreadAttached { no, yes };
+
+class HostMessageThreadState
 {
 public:
-    EventHandler() = default;
-
-    ~EventHandler()
+    template <typename Callback>
+    void setStateWithAction (HostMessageThreadAttached stateIn, Callback&& action)
     {
-        jassert (hostRunLoops.size() == 0);
+        const std::lock_guard<std::mutex> lock { m };
+        state = stateIn;
+        action();
+    }
+
+    void assertHostMessageThread()
+    {
+        const std::lock_guard<std::mutex> lock { m };
+
+        if (state == HostMessageThreadAttached::no)
+            return;
+
+        JUCE_ASSERT_MESSAGE_THREAD
+    }
+
+private:
+    HostMessageThreadAttached state = HostMessageThreadAttached::no;
+    std::mutex m;
+};
+
+class EventHandler final  : public Steinberg::Linux::IEventHandler,
+                            private LinuxEventLoopInternal::Listener
+{
+public:
+    EventHandler()
+    {
+        LinuxEventLoopInternal::registerLinuxEventLoopListener (*this);
+    }
+
+    ~EventHandler() override
+    {
+        jassert (hostRunLoops.empty());
+
+        LinuxEventLoopInternal::deregisterLinuxEventLoopListener (*this);
 
         if (! messageThread->isRunning())
-            messageThread->start();
+            hostMessageThreadState.setStateWithAction (HostMessageThreadAttached::no,
+                                                       [this]() { messageThread->start(); });
     }
 
     JUCE_DECLARE_VST3_COM_REF_METHODS
@@ -133,11 +183,7 @@ public:
     void PLUGIN_API onFDIsSet (Steinberg::Linux::FileDescriptor fd) override
     {
         updateCurrentMessageThread();
-
-        auto it = fdCallbackMap.find (fd);
-
-        if (it != fdCallbackMap.end())
-            it->second (fd);
+        LinuxEventLoopInternal::invokeEventLoopCallbackForFd (fd);
     }
 
     //==============================================================================
@@ -145,19 +191,7 @@ public:
     {
         if (auto* runLoop = getRunLoopFromFrame (plugFrame))
         {
-            if (hostRunLoops.contains (runLoop))
-                runLoop->unregisterEventHandler (this);
-
-            hostRunLoops.add (runLoop);
-
-            fdCallbackMap.clear();
-
-            for (auto& cb : getFdReadCallbacks())
-            {
-                fdCallbackMap[cb.first] = cb.second;
-                runLoop->registerEventHandler (this, cb.first);
-            }
-
+            refreshAttachedEventLoop ([this, runLoop] { hostRunLoops.insert (runLoop); });
             updateCurrentMessageThread();
         }
     }
@@ -165,67 +199,69 @@ public:
     void unregisterHandlerForFrame (IPlugFrame* plugFrame)
     {
         if (auto* runLoop = getRunLoopFromFrame (plugFrame))
-        {
-            hostRunLoops.remove (runLoop);
+            refreshAttachedEventLoop ([this, runLoop] { hostRunLoops.erase (runLoop); });
+    }
 
-            if (! hostRunLoops.contains (runLoop))
-                runLoop->unregisterEventHandler (this);
-        }
+    /* Asserts if it can be established that the calling thread is different from the host's message
+       thread.
+
+       On Linux this can only be determined if the host has already registered its run loop. Until
+       then JUCE messages are serviced by a background thread internal to the plugin.
+    */
+    static void assertHostMessageThread()
+    {
+        hostMessageThreadState.assertHostMessageThread();
     }
 
 private:
-    //=============================================================================
-    class HostRunLoopInterfaces
+    //==============================================================================
+    /*  Connects all known FDs to a single host event loop instance. */
+    class AttachedEventLoop
     {
     public:
-        HostRunLoopInterfaces() = default;
+        AttachedEventLoop() = default;
 
-        void add (Steinberg::Linux::IRunLoop* runLoop)
+        AttachedEventLoop (Steinberg::Linux::IRunLoop* loopIn, Steinberg::Linux::IEventHandler* handlerIn)
+            : loop (loopIn), handler (handlerIn)
         {
-            if (auto* refCountedRunLoop = find (runLoop))
-            {
-                ++(refCountedRunLoop->refCount);
+            for (auto& fd : LinuxEventLoopInternal::getRegisteredFds())
+                loop->registerEventHandler (handler, fd);
+        }
+
+        AttachedEventLoop (AttachedEventLoop&& other) noexcept
+        {
+            swap (other);
+        }
+
+        AttachedEventLoop& operator= (AttachedEventLoop&& other) noexcept
+        {
+            swap (other);
+            return *this;
+        }
+
+        AttachedEventLoop (const AttachedEventLoop&) = delete;
+        AttachedEventLoop& operator= (const AttachedEventLoop&) = delete;
+
+        ~AttachedEventLoop()
+        {
+            if (loop == nullptr)
                 return;
-            }
 
-            runLoops.push_back ({ runLoop, 1 });
+            loop->unregisterEventHandler (handler);
         }
-
-        void remove (Steinberg::Linux::IRunLoop* runLoop)
-        {
-            if (auto* refCountedRunLoop = find (runLoop))
-                if (--(refCountedRunLoop->refCount) == 0)
-                    runLoops.erase (std::find (runLoops.begin(), runLoops.end(), runLoop));
-        }
-
-        size_t size() const noexcept                         { return runLoops.size(); }
-        bool contains (Steinberg::Linux::IRunLoop* runLoop)  { return find (runLoop) != nullptr; }
 
     private:
-        struct RefCountedRunLoop
+        void swap (AttachedEventLoop& other)
         {
-            Steinberg::Linux::IRunLoop* runLoop = nullptr;
-            int refCount = 0;
-
-            bool operator== (const Steinberg::Linux::IRunLoop* other) const noexcept { return runLoop == other; }
-        };
-
-        RefCountedRunLoop* find (const Steinberg::Linux::IRunLoop* runLoop)
-        {
-            auto iter = std::find (runLoops.begin(), runLoops.end(), runLoop);
-
-            if (iter != runLoops.end())
-                return &(*iter);
-
-            return nullptr;
+            std::swap (other.loop, loop);
+            std::swap (other.handler, handler);
         }
 
-        std::vector<RefCountedRunLoop> runLoops;
-
-        JUCE_DECLARE_NON_MOVEABLE (HostRunLoopInterfaces)
-        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HostRunLoopInterfaces)
+        Steinberg::Linux::IRunLoop* loop = nullptr;
+        Steinberg::Linux::IEventHandler* handler = nullptr;
     };
 
+    //==============================================================================
     static Steinberg::Linux::IRunLoop* getRunLoopFromFrame (IPlugFrame* plugFrame)
     {
         Steinberg::Linux::IRunLoop* runLoop = nullptr;
@@ -244,23 +280,69 @@ private:
             if (messageThread->isRunning())
                 messageThread->stop();
 
-            MessageManager::getInstance()->setCurrentThreadAsMessageThread();
+            hostMessageThreadState.setStateWithAction (HostMessageThreadAttached::yes,
+                                                       [] { MessageManager::getInstance()->setCurrentThreadAsMessageThread(); });
         }
+    }
+
+    void fdCallbacksChanged() override
+    {
+        // The set of active FDs has changed, so deregister from the current event loop and then
+        // re-register the current set of FDs.
+        refreshAttachedEventLoop ([]{});
+    }
+
+    /*  Deregisters from any attached event loop, updates the set of known event loops, and then
+        attaches all FDs to the first known event loop.
+
+        The same event loop instance is shared between all plugin instances. Every time an event
+        loop is added or removed, this function should be called to register all FDs with a
+        suitable event loop.
+
+        Note that there's no API to deregister a single FD for a given event loop. Instead, we must
+        deregister all FDs, and then register all known FDs again.
+    */
+    template <typename Callback>
+    void refreshAttachedEventLoop (Callback&& modifyKnownRunLoops)
+    {
+        // Deregister the old event loop.
+        // It's important to call the destructor from the old attached loop before calling the
+        // constructor of the new attached loop.
+        attachedEventLoop = AttachedEventLoop();
+
+        modifyKnownRunLoops();
+
+        // If we still know about an extant event loop, attach to it.
+        if (hostRunLoops.begin() != hostRunLoops.end())
+            attachedEventLoop = AttachedEventLoop (*hostRunLoops.begin(), this);
     }
 
     SharedResourcePointer<MessageThread> messageThread;
 
     std::atomic<int> refCount { 1 };
 
-    HostRunLoopInterfaces hostRunLoops;
-    std::unordered_map<int, std::function<void (int)>> fdCallbackMap;
+    std::multiset<Steinberg::Linux::IRunLoop*> hostRunLoops;
+    AttachedEventLoop attachedEventLoop;
+
+    static HostMessageThreadState hostMessageThreadState;
 
     //==============================================================================
     JUCE_DECLARE_NON_MOVEABLE (EventHandler)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EventHandler)
 };
 
+HostMessageThreadState EventHandler::hostMessageThreadState;
+
 #endif
+
+static void assertHostMessageThread()
+{
+   #if JUCE_LINUX || JUCE_BSD
+    EventHandler::assertHostMessageThread();
+   #else
+    JUCE_ASSERT_MESSAGE_THREAD
+   #endif
+}
 
 //==============================================================================
 class InParameterChangedCallbackSetter
@@ -292,9 +374,9 @@ static QueryInterfaceResult queryAdditionalInterfaces (AudioProcessor* processor
     return {};
 }
 
-tresult extractResult (const QueryInterfaceResult& userInterface,
-                       const InterfaceResultWithDeferredAddRef& juceInterface,
-                       void** obj)
+static tresult extractResult (const QueryInterfaceResult& userInterface,
+                              const InterfaceResultWithDeferredAddRef& juceInterface,
+                              void** obj)
 {
     if (userInterface.isOk() && juceInterface.isOk())
     {
@@ -349,9 +431,11 @@ public:
         {
             info.id             = Vst::kRootUnitId;
             info.parentUnitId   = Vst::kNoParentUnitId;
-            info.programListId  = Vst::kNoProgramListId;
+            info.programListId  = getProgramListCount() > 0
+                                ? static_cast<Vst::ProgramListID> (programParamID)
+                                : Vst::kNoProgramListId;
 
-            toString128 (info.name, TRANS("Root Unit"));
+            toString128 (info.name, TRANS ("Root Unit"));
 
             return kResultTrue;
         }
@@ -385,7 +469,7 @@ public:
             info.id = static_cast<Vst::ProgramListID> (programParamID);
             info.programCount = static_cast<Steinberg::int32> (audioProcessor->getNumPrograms());
 
-            toString128 (info.name, TRANS("Factory Presets"));
+            toString128 (info.name, TRANS ("Factory Presets"));
 
             return kResultTrue;
         }
@@ -418,8 +502,8 @@ public:
 
     tresult PLUGIN_API getUnitByBus (Vst::MediaType, Vst::BusDirection, Steinberg::int32, Steinberg::int32, Vst::UnitID& unitId) override
     {
-        zerostruct (unitId);
-        return kNotImplemented;
+        unitId = Vst::kRootUnitId;
+        return kResultOk;
     }
 
     //==============================================================================
@@ -638,6 +722,9 @@ class JuceVST3EditController : public Vst::EditController,
                                public Vst::IMidiMapping,
                                public Vst::IUnitInfo,
                                public Vst::ChannelContext::IInfoListener,
+                              #if JucePlugin_Enable_ARA
+                               public Presonus::IPlugInViewEmbedding,
+                              #endif
                                public AudioProcessorListener,
                                private ComponentRestarter::Listener
 {
@@ -920,27 +1007,25 @@ public:
     }
 
     //==============================================================================
+   #if JucePlugin_Enable_ARA
+    Steinberg::TBool PLUGIN_API isViewEmbeddingSupported() override
+    {
+        if (auto* pluginInstance = getPluginInstance())
+            return (Steinberg::TBool) dynamic_cast<AudioProcessorARAExtension*> (pluginInstance)->isEditorView();
+        return (Steinberg::TBool) false;
+    }
+
+    Steinberg::tresult PLUGIN_API setViewIsEmbedded (Steinberg::IPlugView* /*view*/, Steinberg::TBool /*embedded*/) override
+    {
+        return kResultOk;
+    }
+   #endif
+
+    //==============================================================================
     tresult PLUGIN_API setComponentState (IBStream* stream) override
     {
-        if (! MessageManager::existsAndIsCurrentThread())
-       #if JUCE_LINUX || JUCE_BSD
-        {
-            tresult result = kResultOk;
-            WaitableEvent finishedEvent;
-
-            MessageManager::callAsync ([&]
-            {
-                result = setComponentState (stream);
-                finishedEvent.signal();
-            });
-
-            finishedEvent.wait();
-            return result;
-        }
-       #else
         // As an IEditController member, the host should only call this from the message thread.
-        jassertfalse;
-       #endif
+        assertHostMessageThread();
 
         if (auto* pluginInstance = getPluginInstance())
         {
@@ -1044,18 +1129,18 @@ public:
         if (audioProcessor != nullptr)
             return audioProcessor->getUnitInfo (unitIndex, info);
 
+        jassertfalse;
         if (unitIndex == 0)
         {
             info.id             = Vst::kRootUnitId;
             info.parentUnitId   = Vst::kNoParentUnitId;
             info.programListId  = Vst::kNoProgramListId;
 
-            toString128 (info.name, TRANS("Root Unit"));
+            toString128 (info.name, TRANS ("Root Unit"));
 
             return kResultTrue;
         }
 
-        jassertfalse;
         zerostruct (info);
         return kResultFalse;
     }
@@ -1260,6 +1345,10 @@ public:
 
             auto latencySamples = pluginInstance->getLatencySamples();
 
+           #if JucePlugin_Enable_ARA
+            jassert (latencySamples == 0 || ! dynamic_cast<AudioProcessorARAExtension*> (pluginInstance)->isBoundToARA());
+           #endif
+
             if (details.latencyChanged && latencySamples != lastLatencySamples)
             {
                 flags |= Vst::kLatencyChanged;
@@ -1404,6 +1493,9 @@ private:
                                              UniqueBase<Vst::ChannelContext::IInfoListener>{},
                                              SharedBase<IPluginBase, Vst::IEditController>{},
                                              UniqueBase<IDependent>{},
+                                            #if JucePlugin_Enable_ARA
+                                             UniqueBase<Presonus::IPlugInViewEmbedding>{},
+                                            #endif
                                              SharedBase<FUnknown, Vst::IEditController>{});
 
         if (result.isOk())
@@ -1644,9 +1736,6 @@ private:
            #if JUCE_MAC
             if (getHostType().type == PluginHostType::SteinbergCubase10)
                 cubase10Workaround.reset (new Cubase10WindowResizeWorkaround (*this));
-           #else
-            if (! approximatelyEqual (editorScaleFactor, ec.lastScaleFactorReceived))
-                setContentScaleFactor (ec.lastScaleFactorReceived);
            #endif
         }
 
@@ -1694,12 +1783,24 @@ private:
             createContentWrapperComponentIfNeeded();
 
            #if JUCE_WINDOWS || JUCE_LINUX || JUCE_BSD
+            // If the plugin was last opened at a particular scale, try to reapply that scale here.
+            // Note that we do this during attach(), rather than in JuceVST3Editor(). During the
+            // constructor, we don't have a host plugFrame, so
+            // ContentWrapperComponent::resizeHostWindow() won't do anything, and the content
+            // wrapper component will be left at the wrong size.
+            applyScaleFactor (StoredScaleFactor{}.withInternal (owner->lastScaleFactorReceived));
+
+            // Check the host scale factor *before* calling addToDesktop, so that the initial
+            // window size during addToDesktop is correct for the current platform scale factor.
+            #if JUCE_WINDOWS && JUCE_WIN_PER_MONITOR_DPI_AWARE
+             component->checkHostWindowScaleFactor();
+            #endif
+
             component->setOpaque (true);
             component->addToDesktop (0, (void*) systemWindow);
             component->setVisible (true);
 
             #if JUCE_WINDOWS && JUCE_WIN_PER_MONITOR_DPI_AWARE
-             component->checkHostWindowScaleFactor();
              component->startTimer (500);
             #endif
 
@@ -1890,30 +1991,28 @@ private:
             return kResultFalse;
         }
 
-        tresult PLUGIN_API setContentScaleFactor (Steinberg::IPlugViewContentScaleSupport::ScaleFactor factor) override
+        tresult PLUGIN_API setContentScaleFactor (const Steinberg::IPlugViewContentScaleSupport::ScaleFactor factor) override
         {
            #if ! JUCE_MAC
-            if (! approximatelyEqual ((float) factor, editorScaleFactor))
+            const auto scaleToApply = [&]
             {
                #if JUCE_WINDOWS && JUCE_WIN_PER_MONITOR_DPI_AWARE
                 // Cubase 10 only sends integer scale factors, so correct this for fractional scales
-                if (getHostType().type == PluginHostType::SteinbergCubase10)
-                {
-                    auto hostWindowScale = (Steinberg::IPlugViewContentScaleSupport::ScaleFactor) getScaleFactorForWindow ((HWND) systemWindow);
+                if (getHostType().type != PluginHostType::SteinbergCubase10)
+                    return factor;
 
-                    if (hostWindowScale > 0.0 && ! approximatelyEqual (factor, hostWindowScale))
-                        factor = hostWindowScale;
-                }
+                const auto hostWindowScale = (Steinberg::IPlugViewContentScaleSupport::ScaleFactor) getScaleFactorForWindow (static_cast<HWND> (systemWindow));
+
+                if (hostWindowScale <= 0.0 || approximatelyEqual (factor, hostWindowScale))
+                    return factor;
+
+                return hostWindowScale;
+               #else
+                return factor;
                #endif
+            }();
 
-                editorScaleFactor = (float) factor;
-
-                if (owner != nullptr)
-                    owner->lastScaleFactorReceived = editorScaleFactor;
-
-                if (component != nullptr)
-                    component->setEditorScaleFactor (editorScaleFactor);
-            }
+            applyScaleFactor (scaleFactor.withHost (scaleToApply));
 
             return kResultTrue;
            #else
@@ -1983,6 +2082,12 @@ private:
             {
                 pluginEditor.reset (plugin.createEditorIfNeeded());
 
+               #if JucePlugin_Enable_ARA
+                jassert (dynamic_cast<AudioProcessorEditorARAExtension*> (pluginEditor.get()) != nullptr);
+                // for proper view embedding, ARA plug-ins must be resizable
+                jassert (pluginEditor->isResizable());
+               #endif
+
                 if (pluginEditor != nullptr)
                 {
                     editorHostContext = std::make_unique<EditorHostContext> (*owner.owner->audioProcessor,
@@ -1992,7 +2097,7 @@ private:
 
                     pluginEditor->setHostContext (editorHostContext.get());
                    #if ! JUCE_MAC
-                    pluginEditor->setScaleFactor (owner.editorScaleFactor);
+                    pluginEditor->setScaleFactor (owner.scaleFactor.get());
                    #endif
 
                     addAndMakeVisible (pluginEditor.get());
@@ -2123,10 +2228,10 @@ private:
            #if JUCE_WINDOWS && JUCE_WIN_PER_MONITOR_DPI_AWARE
             void checkHostWindowScaleFactor()
             {
-                auto hostWindowScale = (float) getScaleFactorForWindow ((HWND) owner.systemWindow);
+                const auto estimatedScale = (float) getScaleFactorForWindow (static_cast<HWND> (owner.systemWindow));
 
-                if (hostWindowScale > 0.0 && ! approximatelyEqual (hostWindowScale, owner.editorScaleFactor))
-                    owner.setContentScaleFactor (hostWindowScale);
+                if (estimatedScale > 0.0)
+                    owner.applyScaleFactor (owner.scaleFactor.withInternal (estimatedScale));
             }
 
             void timerCallback() override
@@ -2210,7 +2315,38 @@ private:
 
         std::unique_ptr<Cubase10WindowResizeWorkaround> cubase10Workaround;
        #else
-        float editorScaleFactor = 1.0f;
+        class StoredScaleFactor
+        {
+        public:
+            StoredScaleFactor withHost     (float x) const { return withMember (*this, &StoredScaleFactor::host,     x); }
+            StoredScaleFactor withInternal (float x) const { return withMember (*this, &StoredScaleFactor::internal, x); }
+            float get() const { return host.value_or (internal); }
+
+        private:
+            std::optional<float> host;
+            float internal = 1.0f;
+        };
+
+        void applyScaleFactor (const StoredScaleFactor newFactor)
+        {
+            const auto previous = std::exchange (scaleFactor, newFactor).get();
+
+            if (previous == scaleFactor.get())
+                return;
+
+            if (owner != nullptr)
+                owner->lastScaleFactorReceived = scaleFactor.get();
+
+            if (component != nullptr)
+            {
+               #if JUCE_LINUX || JUCE_BSD
+                const MessageManagerLock mmLock;
+               #endif
+                component->setEditorScaleFactor (scaleFactor.get());
+            }
+        }
+
+        StoredScaleFactor scaleFactor;
 
         #if JUCE_WINDOWS
          WindowsHooks hooks;
@@ -2225,12 +2361,61 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (JuceVST3EditController)
 };
 
+
+//==============================================================================
+#if JucePlugin_Enable_ARA
+ class JuceARAFactory : public ARA::IMainFactory
+ {
+ public:
+    JuceARAFactory() = default;
+    virtual ~JuceARAFactory() = default;
+
+    JUCE_DECLARE_VST3_COM_REF_METHODS
+
+    tresult PLUGIN_API queryInterface (const ::Steinberg::TUID targetIID, void** obj) override
+    {
+        const auto result = testForMultiple (*this,
+                                             targetIID,
+                                             UniqueBase<ARA::IMainFactory>{},
+                                             UniqueBase<FUnknown>{});
+
+        if (result.isOk())
+            return result.extract (obj);
+
+        if (doUIDsMatch (targetIID, JuceARAFactory::iid))
+        {
+            addRef();
+            *obj = this;
+            return kResultOk;
+        }
+
+        *obj = nullptr;
+        return kNoInterface;
+    }
+
+    //---from ARA::IMainFactory-------
+    const ARA::ARAFactory* PLUGIN_API getFactory() SMTG_OVERRIDE
+    {
+        return createARAFactory();
+    }
+    static const FUID iid;
+
+ private:
+     //==============================================================================
+     std::atomic<int> refCount { 1 };
+ };
+#endif
+
 //==============================================================================
 class JuceVST3Component : public Vst::IComponent,
                           public Vst::IAudioProcessor,
                           public Vst::IUnitInfo,
                           public Vst::IConnectionPoint,
                           public Vst::IProcessContextRequirements,
+                         #if JucePlugin_Enable_ARA
+                          public ARA::IPlugInEntryPoint,
+                          public ARA::IPlugInEntryPoint2,
+                         #endif
                           public AudioPlayHead
 {
 public:
@@ -2300,6 +2485,8 @@ public:
         return extractResult (userProvidedInterface, juceProvidedInterface, obj);
     }
 
+    enum class CallPrepareToPlay { no, yes };
+
     //==============================================================================
     tresult PLUGIN_API initialize (FUnknown* hostContext) override
     {
@@ -2307,7 +2494,7 @@ public:
             host.loadFrom (hostContext);
 
         processContext.sampleRate = processSetup.sampleRate;
-        preparePlugin (processSetup.sampleRate, (int) processSetup.maxSamplesPerBlock);
+        preparePlugin (processSetup.sampleRate, (int) processSetup.maxSamplesPerBlock, CallPrepareToPlay::no);
 
         return kResultTrue;
     }
@@ -2384,7 +2571,7 @@ public:
                             ? (int) processSetup.maxSamplesPerBlock
                             : bufferSize;
 
-            preparePlugin (sampleRate, bufferSize);
+            preparePlugin (sampleRate, bufferSize, CallPrepareToPlay::yes);
         }
 
         return kResultOk;
@@ -2666,7 +2853,7 @@ public:
     {
         // The VST3 spec requires that this function is called from the UI thread.
         // If this assertion fires, your host is misbehaving!
-        JUCE_ASSERT_MESSAGE_THREAD
+        assertHostMessageThread();
 
         if (state == nullptr)
             return kInvalidArgument;
@@ -2758,34 +2945,50 @@ public:
                                      Steinberg::int32 channel, Vst::UnitID& unitId) override                                    { return comPluginInstance->getUnitByBus (type, dir, busIndex, channel, unitId); }
 
     //==============================================================================
-    bool getCurrentPosition (CurrentPositionInfo& info) override
+    Optional<PositionInfo> getPosition() const override
     {
-        info.timeInSamples              = jmax ((juce::int64) 0, processContext.projectTimeSamples);
-        info.timeInSeconds              = static_cast<double> (info.timeInSamples) / processContext.sampleRate;
-        info.bpm                        = jmax (1.0, processContext.tempo);
-        info.timeSigNumerator           = jmax (1, (int) processContext.timeSigNumerator);
-        info.timeSigDenominator         = jmax (1, (int) processContext.timeSigDenominator);
-        info.ppqPositionOfLastBarStart  = processContext.barPositionMusic;
-        info.ppqPosition                = processContext.projectTimeMusic;
-        info.ppqLoopStart               = processContext.cycleStartMusic;
-        info.ppqLoopEnd                 = processContext.cycleEndMusic;
-        info.isRecording                = (processContext.state & Vst::ProcessContext::kRecording) != 0;
-        info.isPlaying                  = (processContext.state & Vst::ProcessContext::kPlaying) != 0;
-        info.isLooping                  = (processContext.state & Vst::ProcessContext::kCycleActive) != 0;
+        PositionInfo info;
+        info.setTimeInSamples (jmax ((juce::int64) 0, processContext.projectTimeSamples));
+        info.setTimeInSeconds (static_cast<double> (*info.getTimeInSamples()) / processContext.sampleRate);
+        info.setIsRecording ((processContext.state & Vst::ProcessContext::kRecording) != 0);
+        info.setIsPlaying ((processContext.state & Vst::ProcessContext::kPlaying) != 0);
+        info.setIsLooping ((processContext.state & Vst::ProcessContext::kCycleActive) != 0);
 
-        info.frameRate = [&]
-        {
-            if ((processContext.state & Vst::ProcessContext::kSmpteValid) == 0)
-                return FrameRate();
+        info.setBpm ((processContext.state & Vst::ProcessContext::kTempoValid) != 0
+                     ? makeOptional (processContext.tempo)
+                     : nullopt);
 
-            return FrameRate().withBaseRate ((int) processContext.frameRate.framesPerSecond)
-                              .withDrop ((processContext.frameRate.flags & Vst::FrameRate::kDropRate) != 0)
-                              .withPullDown ((processContext.frameRate.flags & Vst::FrameRate::kPullDownRate) != 0);
-        }();
+        info.setTimeSignature ((processContext.state & Vst::ProcessContext::kTimeSigValid) != 0
+                               ? makeOptional (TimeSignature { processContext.timeSigNumerator, processContext.timeSigDenominator })
+                               : nullopt);
 
-        info.editOriginTime = (double) processContext.smpteOffsetSubframes / (80.0 * info.frameRate.getEffectiveRate());
+        info.setLoopPoints ((processContext.state & Vst::ProcessContext::kCycleValid) != 0
+                            ? makeOptional (LoopPoints { processContext.cycleStartMusic, processContext.cycleEndMusic })
+                            : nullopt);
 
-        return true;
+        info.setPpqPosition ((processContext.state & Vst::ProcessContext::kProjectTimeMusicValid) != 0
+                             ? makeOptional (processContext.projectTimeMusic)
+                             : nullopt);
+
+        info.setPpqPositionOfLastBarStart ((processContext.state & Vst::ProcessContext::kBarPositionValid) != 0
+                                           ? makeOptional (processContext.barPositionMusic)
+                                           : nullopt);
+
+        info.setFrameRate ((processContext.state & Vst::ProcessContext::kSmpteValid) != 0
+                           ? makeOptional (FrameRate().withBaseRate ((int) processContext.frameRate.framesPerSecond)
+                                                      .withDrop ((processContext.frameRate.flags & Vst::FrameRate::kDropRate) != 0)
+                                                      .withPullDown ((processContext.frameRate.flags & Vst::FrameRate::kPullDownRate) != 0))
+                           : nullopt);
+
+        info.setEditOriginTime (info.getFrameRate().hasValue()
+                                ? makeOptional ((double) processContext.smpteOffsetSubframes / (80.0 * info.getFrameRate()->getEffectiveRate()))
+                                : nullopt);
+
+        info.setHostTimeNs ((processContext.state & Vst::ProcessContext::kSystemTimeValid) != 0
+                            ? makeOptional ((uint64_t) processContext.systemTime)
+                            : nullopt);
+
+        return info;
     }
 
     //==============================================================================
@@ -2957,33 +3160,82 @@ public:
 
         if (type == Vst::kAudio)
         {
-            if (index < 0 || index >= getNumAudioBuses (dir == Vst::kInput))
+            const auto numInputBuses  = getNumAudioBuses (true);
+            const auto numOutputBuses = getNumAudioBuses (false);
+
+            if (! isPositiveAndBelow (index, dir == Vst::kInput ? numInputBuses : numOutputBuses))
                 return kResultFalse;
 
-            // Some hosts (old cakewalk, bitwig studio) might call this function without
-            // deactivating the plugin, so we update the channel mapping here.
-            if (dir == Vst::BusDirections::kInput)
-                bufferMapper.setInputBusActive ((size_t) index, state != 0);
+            // The host is allowed to enable/disable buses as it sees fit, so the plugin needs to be
+            // able to handle any set of enabled/disabled buses, including layouts for which
+            // AudioProcessor::isBusesLayoutSupported would return false.
+            // Our strategy is to keep track of the layout that the host last requested, and to
+            // attempt to apply that layout directly.
+            // If the layout isn't supported by the processor, we'll try enabling all the buses
+            // instead.
+            // If the host enables a bus that the processor refused to enable, then we'll ignore
+            // that bus (and return silence for output buses). If the host disables a bus that the
+            // processor refuses to disable, the wrapper will provide the processor with silence for
+            // input buses, and ignore the contents of output buses.
+            // Note that some hosts (old bitwig and cakewalk) may incorrectly call this function
+            // when the plugin is in an activated state.
+            if (dir == Vst::kInput)
+                bufferMapper.setInputBusHostActive ((size_t) index, state != 0);
             else
-                bufferMapper.setOutputBusActive ((size_t) index, state != 0);
+                bufferMapper.setOutputBusHostActive ((size_t) index, state != 0);
 
-            if (auto* bus = pluginInstance->getBus (dir == Vst::kInput, index))
+            AudioProcessor::BusesLayout desiredLayout;
+
+            for (auto i = 0; i < numInputBuses; ++i)
+                desiredLayout.inputBuses.add (bufferMapper.getRequestedLayoutForInputBus ((size_t) i));
+
+            for (auto i = 0; i < numOutputBuses; ++i)
+                desiredLayout.outputBuses.add (bufferMapper.getRequestedLayoutForOutputBus ((size_t) i));
+
+            const auto prev = pluginInstance->getBusesLayout();
+
+            const auto busesLayoutSupported = [&]
             {
                #ifdef JucePlugin_PreferredChannelConfigurations
-                auto newLayout = pluginInstance->getBusesLayout();
-                auto targetLayout = (state != 0 ? bus->getLastEnabledLayout() : AudioChannelSet::disabled());
+                struct ChannelPair
+                {
+                    short ins, outs;
 
-                (dir == Vst::kInput ? newLayout.inputBuses : newLayout.outputBuses).getReference (index) = targetLayout;
+                    auto tie() const { return std::tie (ins, outs); }
+                    bool operator== (ChannelPair x) const { return tie() == x.tie(); }
+                };
 
-                short configs[][2] = { JucePlugin_PreferredChannelConfigurations };
-                auto compLayout = pluginInstance->getNextBestLayoutInLayoutList (newLayout, configs);
+                const auto countChannels = [] (auto& range)
+                {
+                    return std::accumulate (range.begin(), range.end(), 0, [] (auto acc, auto set)
+                    {
+                        return acc + set.size();
+                    });
+                };
 
-                if ((dir == Vst::kInput ? compLayout.inputBuses : compLayout.outputBuses).getReference (index) != targetLayout)
-                    return kResultFalse;
+                const auto toShort = [] (int x)
+                {
+                    jassert (0 <= x && x <= std::numeric_limits<short>::max());
+                    return (short) x;
+                };
+
+                const ChannelPair requested { toShort (countChannels (desiredLayout.inputBuses)),
+                                              toShort (countChannels (desiredLayout.outputBuses)) };
+                const ChannelPair configs[] = { JucePlugin_PreferredChannelConfigurations };
+                return std::find (std::begin (configs), std::end (configs), requested) != std::end (configs);
+               #else
+                return pluginInstance->checkBusesLayoutSupported (desiredLayout);
                #endif
+            }();
 
-                return bus->enable (state != 0) ? kResultTrue : kResultFalse;
-            }
+            if (busesLayoutSupported)
+                pluginInstance->setBusesLayout (desiredLayout);
+            else
+                pluginInstance->enableAllBuses();
+
+            bufferMapper.updateActiveClientBuses (pluginInstance->getBusesLayout());
+
+            return kResultTrue;
         }
 
         return kResultFalse;
@@ -3029,21 +3281,54 @@ public:
         if (numIns > numInputBuses || numOuts > numOutputBuses)
             return false;
 
-        auto requested = pluginInstance->getBusesLayout();
+        // see the following documentation to understand the correct way to react to this callback
+        // https://steinbergmedia.github.io/vst3_doc/vstinterfaces/classSteinberg_1_1Vst_1_1IAudioProcessor.html#ad3bc7bac3fd3b194122669be2a1ecc42
 
-        for (int i = 0; i < numIns; ++i)
-            requested.getChannelSet (true,  i) = getChannelSetForSpeakerArrangement (inputs[i]);
+        const auto requestedLayout = [&]
+        {
+            auto result = pluginInstance->getBusesLayout();
 
-        for (int i = 0; i < numOuts; ++i)
-            requested.getChannelSet (false, i) = getChannelSetForSpeakerArrangement (outputs[i]);
+            for (int i = 0; i < numIns; ++i)
+                result.getChannelSet (true,  i) = getChannelSetForSpeakerArrangement (inputs[i]);
+
+            for (int i = 0; i < numOuts; ++i)
+                result.getChannelSet (false, i) = getChannelSetForSpeakerArrangement (outputs[i]);
+
+            return result;
+        }();
 
        #ifdef JucePlugin_PreferredChannelConfigurations
         short configs[][2] = { JucePlugin_PreferredChannelConfigurations };
-        if (! AudioProcessor::containsLayout (requested, configs))
+        if (! AudioProcessor::containsLayout (requestedLayout, configs))
             return kResultFalse;
        #endif
 
-        return pluginInstance->setBusesLayoutWithoutEnabling (requested) ? kResultTrue : kResultFalse;
+        if (pluginInstance->checkBusesLayoutSupported (requestedLayout))
+        {
+            if (! pluginInstance->setBusesLayoutWithoutEnabling (requestedLayout))
+                return kResultFalse;
+
+            bufferMapper.updateFromProcessor (*pluginInstance);
+            return kResultTrue;
+        }
+
+        // apply layout changes in reverse order as Steinberg says we should prioritize main buses
+        const auto nextBest = [this, numInputBuses, numOutputBuses, &requestedLayout]
+        {
+            auto layout = pluginInstance->getBusesLayout();
+
+            for (auto busIdx = jmax (numInputBuses, numOutputBuses) - 1; busIdx >= 0; --busIdx)
+                for (const auto isInput : { true, false })
+                    if (auto* bus = pluginInstance->getBus (isInput, busIdx))
+                        bus->isLayoutSupported (requestedLayout.getChannelSet (isInput, busIdx), &layout);
+
+            return layout;
+        }();
+
+        if (pluginInstance->setBusesLayoutWithoutEnabling (nextBest))
+            bufferMapper.updateFromProcessor (*pluginInstance);
+
+        return kResultFalse;
     }
 
     tresult PLUGIN_API getBusArrangement (Vst::BusDirection dir, Steinberg::int32 index, Vst::SpeakerArrangement& arr) override
@@ -3085,7 +3370,7 @@ public:
                                                         : AudioProcessor::singlePrecision);
         getPluginInstance().setNonRealtime (newSetup.processMode == Vst::kOffline);
 
-        preparePlugin (processSetup.sampleRate, processSetup.maxSamplesPerBlock);
+        preparePlugin (processSetup.sampleRate, processSetup.maxSamplesPerBlock, CallPrepareToPlay::no);
 
         return kResultTrue;
     }
@@ -3116,30 +3401,44 @@ public:
     {
         jassert (pluginInstance != nullptr);
 
-        auto numParamsChanged = paramChanges.getParameterCount();
+        struct ParamChangeInfo
+        {
+            Steinberg::int32 offsetSamples = 0;
+            double value = 0.0;
+        };
+
+        const auto getPointFromQueue = [] (Steinberg::Vst::IParamValueQueue* queue, Steinberg::int32 index)
+        {
+            ParamChangeInfo result;
+            return queue->getPoint (index, result.offsetSamples, result.value) == kResultTrue
+                   ? makeOptional (result)
+                   : nullopt;
+        };
+
+        const auto numParamsChanged = paramChanges.getParameterCount();
 
         for (Steinberg::int32 i = 0; i < numParamsChanged; ++i)
         {
             if (auto* paramQueue = paramChanges.getParameterData (i))
             {
-                auto numPoints = paramQueue->getPointCount();
+                const auto vstParamID = paramQueue->getParameterId();
+                const auto numPoints  = paramQueue->getPointCount();
 
-                Steinberg::int32 offsetSamples = 0;
-                double value = 0.0;
-
-                if (paramQueue->getPoint (numPoints - 1, offsetSamples, value) == kResultTrue)
+               #if JUCE_VST3_EMULATE_MIDI_CC_WITH_PARAMETERS
+                if (juceVST3EditController != nullptr && juceVST3EditController->isMidiControllerParamID (vstParamID))
                 {
-                    auto vstParamID = paramQueue->getParameterId();
-
-                   #if JUCE_VST3_EMULATE_MIDI_CC_WITH_PARAMETERS
-                    if (juceVST3EditController != nullptr && juceVST3EditController->isMidiControllerParamID (vstParamID))
-                        addParameterChangeToMidiBuffer (offsetSamples, vstParamID, value);
-                    else
-                   #endif
+                    for (Steinberg::int32 point = 0; point < numPoints; ++point)
                     {
-                        if (auto* param = comPluginInstance->getParamForVSTParamID (vstParamID))
-                            setValueAndNotifyIfChanged (*param, (float) value);
+                        if (const auto change = getPointFromQueue (paramQueue, point))
+                            addParameterChangeToMidiBuffer (change->offsetSamples, vstParamID, change->value);
                     }
+                }
+                else
+               #endif
+                if (const auto change = getPointFromQueue (paramQueue, numPoints - 1))
+                {
+                    if (auto* param = comPluginInstance->getParamForVSTParamID (vstParamID))
+                        setValueAndNotifyIfChanged (*param, (float) change->value);
                 }
             }
         }
@@ -3250,6 +3549,10 @@ private:
                                              UniqueBase<Vst::IUnitInfo>{},
                                              UniqueBase<Vst::IConnectionPoint>{},
                                              UniqueBase<Vst::IProcessContextRequirements>{},
+                                            #if JucePlugin_Enable_ARA
+                                             UniqueBase<ARA::IPlugInEntryPoint>{},
+                                             UniqueBase<ARA::IPlugInEntryPoint2>{},
+                                            #endif
                                              SharedBase<FUnknown, Vst::IComponent>{});
 
         if (result.isOk())
@@ -3285,7 +3588,9 @@ private:
     template <typename FloatType>
     void processAudio (Vst::ProcessData& data)
     {
-        auto buffer = bufferMapper.getJuceLayoutForVst3Buffer (detail::Tag<FloatType>{}, data);
+        ClientRemappedBuffer<FloatType> remappedBuffer { bufferMapper, data };
+        auto& buffer = remappedBuffer.buffer;
+
         jassert ((int) buffer.getNumChannels() == jmax (pluginInstance->getTotalNumInputChannels(),
                                                         pluginInstance->getTotalNumOutputChannels()));
 
@@ -3348,18 +3653,42 @@ private:
              | kNeedTransportState;
     }
 
-    void preparePlugin (double sampleRate, int bufferSize)
+    void preparePlugin (double sampleRate, int bufferSize, CallPrepareToPlay callPrepareToPlay)
     {
         auto& p = getPluginInstance();
 
         p.setRateAndBufferSizeDetails (sampleRate, bufferSize);
-        p.prepareToPlay (sampleRate, bufferSize);
+
+        if (callPrepareToPlay == CallPrepareToPlay::yes)
+            p.prepareToPlay (sampleRate, bufferSize);
 
         midiBuffer.ensureSize (2048);
         midiBuffer.clear();
 
-        bufferMapper.prepare (p, bufferSize);
+        bufferMapper.updateFromProcessor (p);
+        bufferMapper.prepare (bufferSize);
     }
+
+    //==============================================================================
+   #if JucePlugin_Enable_ARA
+    const ARA::ARAFactory* PLUGIN_API getFactory() SMTG_OVERRIDE
+    {
+        return createARAFactory();
+    }
+
+    const ARA::ARAPlugInExtensionInstance* PLUGIN_API bindToDocumentController (ARA::ARADocumentControllerRef /*controllerRef*/) SMTG_OVERRIDE
+    {
+        ARA_VALIDATE_API_STATE (false && "call is deprecated in ARA 2, host must not call this");
+        return nullptr;
+    }
+
+    const ARA::ARAPlugInExtensionInstance* PLUGIN_API bindToDocumentControllerWithRoles (ARA::ARADocumentControllerRef documentControllerRef,
+                                                                                         ARA::ARAPlugInInstanceRoleFlags knownRoles, ARA::ARAPlugInInstanceRoleFlags assignedRoles) SMTG_OVERRIDE
+    {
+        AudioProcessorARAExtension* araAudioProcessorExtension = dynamic_cast<AudioProcessorARAExtension*> (pluginInstance);
+        return araAudioProcessorExtension->bindToARA (documentControllerRef, knownRoles, assignedRoles);
+    }
+   #endif
 
     //==============================================================================
     ScopedJuceInitialiser_GUI libraryInitialiser;
@@ -3443,7 +3772,7 @@ DEF_CLASS_IID (JuceAudioProcessor)
  // Defined in PluginUtilities.cpp
  void getUUIDForVST2ID (bool, uint8[16]);
 
- FUID getFUIDForVST2ID (bool forControllerUID)
+ static FUID getFUIDForVST2ID (bool forControllerUID)
  {
      TUID uuid;
      getUUIDForVST2ID (forControllerUID, (uint8*) uuid);
@@ -3457,6 +3786,11 @@ DEF_CLASS_IID (JuceAudioProcessor)
 
  DECLARE_CLASS_IID (JuceVST3Component, 0xABCDEF01, 0x9182FAEB, JucePlugin_ManufacturerCode, JucePlugin_PluginCode)
  DEF_CLASS_IID (JuceVST3Component)
+#endif
+
+#if JucePlugin_Enable_ARA
+ DECLARE_CLASS_IID (JuceARAFactory, 0xABCDEF01, 0xA1B2C3D4, JucePlugin_ManufacturerCode, JucePlugin_PluginCode)
+ DEF_CLASS_IID (JuceARAFactory)
 #endif
 
 JUCE_END_IGNORE_WARNINGS_MSVC
@@ -3488,8 +3822,12 @@ bool shutdownModule()
 #endif
 
 #if JUCE_WINDOWS
+ JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wmissing-prototypes")
+
  extern "C" __declspec (dllexport) bool InitDll()   { return initModule(); }
  extern "C" __declspec (dllexport) bool ExitDll()   { return shutdownModule(); }
+
+ JUCE_END_IGNORE_WARNINGS_GCC_LIKE
 #elif JUCE_LINUX || JUCE_BSD
  void* moduleHandle = nullptr;
  int moduleEntryCounter = 0;
@@ -3582,6 +3920,13 @@ static FUnknown* createControllerInstance (Vst::IHostApplication* host)
 {
     return static_cast<Vst::IEditController*> (new JuceVST3EditController (host));
 }
+
+#if JucePlugin_Enable_ARA
+ static FUnknown* createARAFactoryInstance (Vst::IHostApplication* /*host*/)
+ {
+    return static_cast<ARA::IMainFactory*> (new JuceARAFactory());
+ }
+#endif
 
 //==============================================================================
 struct JucePluginFactory;
@@ -3855,6 +4200,20 @@ extern "C" SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory()
                                                   kVstVersionString);
 
         globalFactory->registerClass (controllerClass, createControllerInstance);
+
+       #if JucePlugin_Enable_ARA
+        static const PClassInfo2 araFactoryClass (JuceARAFactory::iid,
+                                                  PClassInfo::kManyInstances,
+                                                  kARAMainFactoryClass,
+                                                  JucePlugin_Name,
+                                                  JucePlugin_Vst3ComponentFlags,
+                                                  JucePlugin_Vst3Category,
+                                                  JucePlugin_Manufacturer,
+                                                  JucePlugin_VersionString,
+                                                  kVstVersionString);
+
+        globalFactory->registerClass (araFactoryClass, createARAFactoryInstance);
+       #endif
     }
     else
     {
@@ -3866,7 +4225,11 @@ extern "C" SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory()
 
 //==============================================================================
 #if JUCE_WINDOWS
+JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wmissing-prototypes")
+
 extern "C" BOOL WINAPI DllMain (HINSTANCE instance, DWORD reason, LPVOID) { if (reason == DLL_PROCESS_ATTACH) Process::setCurrentModuleInstanceHandle (instance); return true; }
+
+JUCE_END_IGNORE_WARNINGS_GCC_LIKE
 #endif
 
 JUCE_END_NO_SANITIZE
