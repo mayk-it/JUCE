@@ -557,6 +557,8 @@ struct iOSAudioIODevice::Pimpl      : public AsyncUpdater
 
         JUCE_NSERROR_CHECK ([session setMode: mode
                                        error: &error]);
+        
+        JUCE_IOS_AUDIO_LOG ("Session Mode: " << session.mode);
 
         return session.mode == mode;
     }
@@ -966,6 +968,7 @@ struct iOSAudioIODevice::Pimpl      : public AsyncUpdater
             for (int c = 0; c < channelData.outputs->numActiveChannels; ++c)
             {
                 auto channelIndex = channelData.outputs->activeChannelIndices[c];
+                FloatVectorOperations::multiply(outputData[c], gainCompensation, bufferSize);
                 memcpy (data->mBuffers[channelIndex].mData, outputData[c], channelDataSize);
             }
 
@@ -1027,13 +1030,20 @@ struct iOSAudioIODevice::Pimpl      : public AsyncUpdater
         desc.componentManufacturer = kAudioUnitManufacturer_Apple;
         desc.componentFlags = 0;
         desc.componentFlagsMask = 0;
-                
+               
         setAnalogInputGain(0.5f);
+        gainCompensation = 1.f;
         
-        if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing) {
-            setAnalogInputGain(1.f);
+        if (!AudioIODeviceType::useDeviceVoiceProcessing)
+        {
             setAudioPreprocessingEnabled(false);
-            selectMicPosition(MicPosition::Front);
+
+            if (isUsingBuiltInSpeaker())
+            {
+                gainCompensation = Decibels::decibelsToGain(19.5f);
+                setAnalogInputGain(1.f);
+                selectMicPosition(MicPosition::Front);
+            }
         }
 
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
@@ -1461,7 +1471,10 @@ struct iOSAudioIODevice::Pimpl      : public AsyncUpdater
       Back,
       Front
     };
+    
     PlayHead playhead { *this };
+    
+    float gainCompensation;
 
     JUCE_DECLARE_NON_COPYABLE (Pimpl)
 };
