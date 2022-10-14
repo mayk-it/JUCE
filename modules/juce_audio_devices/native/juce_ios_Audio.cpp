@@ -557,6 +557,8 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
 
         JUCE_NSERROR_CHECK ([session setMode: mode
                                        error: &error]);
+        
+        JUCE_IOS_AUDIO_LOG ("Session Mode: " << session.mode);
 
         return session.mode == mode;
     }
