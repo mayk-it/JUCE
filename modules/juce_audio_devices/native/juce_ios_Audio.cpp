@@ -1014,14 +1014,19 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         desc.componentFlags = 0;
         desc.componentFlagsMask = 0;
                
-        setAudioPreprocessingEnabled(false);
         setAnalogInputGain(0.5f);
         gainCompensation = 1.f;
         
-        if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing) {
-            gainCompensation = Decibels::decibelsToGain(19.5f);
-            setAnalogInputGain(1.f);
-            selectMicPosition(MicPosition::Front);
+        if (!AudioIODeviceType::useDeviceVoiceProcessing)
+        {
+            setAudioPreprocessingEnabled(false);
+
+            if (isUsingBuiltInSpeaker())
+            {
+                gainCompensation = Decibels::decibelsToGain(19.5f);
+                setAnalogInputGain(1.f);
+                selectMicPosition(MicPosition::Front);
+            }
         }
 
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
