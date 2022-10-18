@@ -1031,6 +1031,7 @@ struct iOSAudioIODevice::Pimpl      : public AsyncUpdater
         desc.componentFlags = 0;
         desc.componentFlagsMask = 0;
                
+        setAudioPreprocessingEnabled(true);
         setAnalogInputGain(0.5f);
         gainCompensation = 1.f;
         
