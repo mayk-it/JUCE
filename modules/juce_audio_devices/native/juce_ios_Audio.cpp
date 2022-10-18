@@ -1034,16 +1034,12 @@ struct iOSAudioIODevice::Pimpl      : public AsyncUpdater
         setAnalogInputGain(0.5f);
         gainCompensation = 1.f;
         
-        if (!AudioIODeviceType::useDeviceVoiceProcessing)
+        if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing)
         {
             setAudioPreprocessingEnabled(false);
-
-            if (isUsingBuiltInSpeaker())
-            {
-                gainCompensation = Decibels::decibelsToGain(19.5f);
-                setAnalogInputGain(1.f);
-                selectMicPosition(MicPosition::Front);
-            }
+            gainCompensation = Decibels::decibelsToGain(19.5f);
+            setAnalogInputGain(1.f);
+            selectMicPosition(MicPosition::Front);
         }
 
         AudioComponent comp = AudioComponentFindNext (nullptr, &desc);
