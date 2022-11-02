@@ -1024,14 +1024,12 @@ struct iOSAudioIODevice::Pimpl      : public AsyncUpdater
 
         AudioComponentDescription desc;
         desc.componentType = kAudioUnitType_Output;
-        desc.componentSubType = isUsingBuiltInSpeaker() && AudioIODeviceType::useDeviceVoiceProcessing
-                                    ? kAudioUnitSubType_VoiceProcessingIO
-                                    : kAudioUnitSubType_RemoteIO;
+        desc.componentSubType = kAudioUnitSubType_RemoteIO;
         desc.componentManufacturer = kAudioUnitManufacturer_Apple;
         desc.componentFlags = 0;
         desc.componentFlagsMask = 0;
                        
-        if (isUsingBuiltInSpeaker() && !AudioIODeviceType::useDeviceVoiceProcessing)
+        if (isUsingBuiltInSpeaker())
         {
             setAudioPreprocessingEnabled(false);
             gainCompensation = Decibels::decibelsToGain(19.5f);

@@ -167,10 +167,6 @@ public:
     /** Creates a Bela device type if it's available on this platform, or returns null. */
     static AudioIODeviceType* createAudioIODeviceType_Bela();
 
-    // NOTE: This is a temporary hack to test out disabling the VPIO. It should be removed when we successfully kill the
-    // VPIO.
-    static bool useDeviceVoiceProcessing;
-
    #ifndef DOXYGEN
     [[deprecated ("You should call the method which takes a WASAPIDeviceMode instead.")]]
     static AudioIODeviceType* createAudioIODeviceType_WASAPI (bool exclusiveMode);
