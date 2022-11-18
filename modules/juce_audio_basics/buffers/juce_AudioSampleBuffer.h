@@ -1258,7 +1258,7 @@ private:
     Type** channels;
     HeapBlock<char, true> allocatedData;
     Type* preallocatedChannelSpace[32];
-    bool isClear = false;
+    std::atomic<bool> isClear = false;
     static constexpr size_t maxAlignment = getMaxAlignment();
 
     JUCE_LEAK_DETECTOR (AudioBuffer)
