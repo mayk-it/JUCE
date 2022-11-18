@@ -182,7 +182,7 @@ public:
           size (other.size),
           allocatedBytes (other.allocatedBytes),
           allocatedData (std::move (other.allocatedData)),
-          isClear (other.isClear)
+          isClear (other.isClear.load())
     {
         if (numChannels < (int) numElementsInArray (preallocatedChannelSpace))
         {
@@ -208,7 +208,7 @@ public:
         size = other.size;
         allocatedBytes = other.allocatedBytes;
         allocatedData = std::move (other.allocatedData);
-        isClear = other.isClear;
+        isClear = other.isClear.load();
 
         if (numChannels < (int) numElementsInArray (preallocatedChannelSpace))
         {
