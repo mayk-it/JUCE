@@ -1685,7 +1685,7 @@ private:
     CriticalSection callbackLock;
     AudioIODeviceCallback* callback = nullptr;
     AudioIODeviceCallback* previousCallback = nullptr;
-    double currentSampleRate = 0;
+    std::atomic<double> currentSampleRate = 0;
     int currentBufferSize = 0;
     bool active = false;
     String lastError;
