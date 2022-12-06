@@ -42,11 +42,14 @@ struct FastMathApproximations
         advised to use input values only between -5 and +5 for limiting the error.
     */
     template <typename FloatType>
-    static FloatType cosh (FloatType x) noexcept
+    static constexpr FloatType cosh (FloatType x) noexcept
     {
-        auto x2 = x * x;
-        auto numerator = -(39251520 + x2 * (18471600 + x2 * (1075032 + 14615 * x2)));
-        auto denominator = -39251520 + x2 * (1154160 + x2 * (-16632 + 127 * x2));
+        constexpr auto a = FloatType(39251520); constexpr auto b = FloatType(39251520); constexpr auto c = FloatType(1075032);
+        constexpr auto d = FloatType(14615); constexpr auto e = FloatType(1154160); constexpr auto f = FloatType(16632);
+        constexpr auto g = FloatType(127);
+        const auto x2 = x * x;
+        const auto numerator = -(a + x2 * (b + x2 * (c + d * x2)));
+        const auto denominator = -a + x2 * (e + x2 * (-f + g * x2));
         return numerator / denominator;
     }
 
@@ -57,7 +60,7 @@ struct FastMathApproximations
         advised to use input values only between -5 and +5 for limiting the error.
     */
     template <typename FloatType>
-    static void cosh (FloatType* values, size_t numValues) noexcept
+    static constexpr void cosh (FloatType* values, size_t numValues) noexcept
     {
         for (size_t i = 0; i < numValues; ++i)
             values[i] = FastMathApproximations::cosh (values[i]);
@@ -70,7 +73,7 @@ struct FastMathApproximations
         advised to use input values only between -5 and +5 for limiting the error.
     */
     template <typename FloatType>
-    static FloatType sinh (FloatType x) noexcept
+    static constexpr FloatType sinh (FloatType x) noexcept
     {
         auto x2 = x * x;
         auto numerator = -x * (11511339840 + x2 * (1640635920 + x2 * (52785432 + x2 * 479249)));
@@ -85,7 +88,7 @@ struct FastMathApproximations
         advised to use input values only between -5 and +5 for limiting the error.
     */
     template <typename FloatType>
-    static void sinh (FloatType* values, size_t numValues) noexcept
+    static constexpr void sinh (FloatType* values, size_t numValues) noexcept
     {
         for (size_t i = 0; i < numValues; ++i)
             values[i] = FastMathApproximations::sinh (values[i]);
@@ -129,9 +132,13 @@ struct FastMathApproximations
     template <typename FloatType>
     static FloatType cos (FloatType x) noexcept
     {
-        auto x2 = x * x;
-        auto numerator = -(-39251520 + x2 * (18471600 + x2 * (-1075032 + 14615 * x2)));
-        auto denominator = 39251520 + x2 * (1154160 + x2 * (16632 + x2 * 127));
+        constexpr auto a = FloatType(39251520); constexpr auto b = FloatType(18471600);
+        constexpr auto c = FloatType(1075032);  constexpr auto d = FloatType(14615);
+        constexpr auto e = FloatType(1154160);  constexpr auto f = FloatType(16632);
+        constexpr auto g = FloatType(127);
+        const auto x2 = x * x;
+        const auto numerator = -(-a + x2 * (b + x2 * (-c + d * x2)));
+        const auto denominator = a + x2 * (e + x2 * (f + x2 * g));
         return numerator / denominator;
     }
 
@@ -155,11 +162,14 @@ struct FastMathApproximations
         advised to use input values only between -pi and +pi for limiting the error.
     */
     template <typename FloatType>
-    static FloatType sin (FloatType x) noexcept
+    static constexpr FloatType sin (FloatType x) noexcept
     {
-        auto x2 = x * x;
-        auto numerator = -x * (-11511339840 + x2 * (1640635920 + x2 * (-52785432 + x2 * 479249)));
-        auto denominator = 11511339840 + x2 * (277920720 + x2 * (3177720 + x2 * 18361));
+        const auto a = FloatType(11511339840); const auto b = FloatType(1640635920); const auto c = FloatType(52785432);
+        const auto d = FloatType(479249);      const auto e = FloatType(277920720);  const auto f = FloatType(3177720);
+        const auto g = FloatType(18361);
+        const auto x2 = x * x;
+        const auto numerator = -x * (-a + x2 * (b + x2 * (-c + x2 * d)));
+        const auto denominator = a + x2 * (e + x2 * (f + x2 * g));
         return numerator / denominator;
     }
 
