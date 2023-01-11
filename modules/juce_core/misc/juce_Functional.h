@@ -86,4 +86,46 @@ Object withMember (Object copy, Member OtherObject::* member, Other&& value)
     return copy;
 }
 
+/** An easy way to ensure that a function is called at the end of the current
+    scope.
+
+    Usage:
+    @code
+    {
+        if (flag == true)
+            return;
+
+        // While this code executes, flag is true e.g. to prevent reentrancy
+        flag = true;
+        // When we exit this scope, flag must be false
+        const ScopeGuard scope { [&] { flag = false; } };
+
+        if (checkInitialCondition())
+            return; // Scope's lambda will fire here...
+
+        if (checkCriticalCondition())
+            throw std::runtime_error{}; // ...or here...
+
+        doWorkHavingEstablishedPreconditions();
+    } // ...or here!
+    @endcode
+*/
+template <typename Fn> struct ScopeGuard : Fn { ~ScopeGuard() { Fn::operator()(); } };
+template <typename Fn> ScopeGuard (Fn) -> ScopeGuard<Fn>;
+
+#ifndef DOXYGEN
+namespace detail
+{
+template <typename Functor, typename Return, typename... Args>
+static constexpr auto toFnPtr (Functor functor, Return (Functor::*) (Args...) const)
+{
+    return static_cast<Return (*) (Args...)> (functor);
+}
+} // namespace detail
+#endif
+
+/** Converts a captureless lambda to its equivalent function pointer type. */
+template <typename Functor>
+static constexpr auto toFnPtr (Functor functor) { return detail::toFnPtr (functor, &Functor::operator()); }
+
 } // namespace juce
